@@ -353,7 +353,7 @@ aggregate(matchMB0809s0130$away_team_goal, by=list(Category=matchMB0809s0130$hom
 aggregate(matchMB0809s0130$away_team_goal, by=list(Category=matchMB0809s0130$away_team_api_id), FUN=sum)
 # later we need to calculate goals against for each team
 
-
+### (Skip - Poor method) Calculate goals for/against each team, and the differential ====
 # (1) this shows home team (as target team) and home team goals (goals scored for)
 aggregate(matchMB0809s0130$home_team_goal, by=list(Category=matchMB0809s0130$home_team_api_id), FUN=sum)
 # (2) this shows home team (as target team) and away team goals (goals scored against)
@@ -381,3 +381,39 @@ aggregate(matchMB0809s0130$home_team_goal, by=list(Category=matchMB0809s0130$hom
   aggregate(matchMB0809s0130$away_team_goal, by=list(Category=matchMB0809s0130$away_team_api_id), FUN=sum)-
   (aggregate(matchMB0809s0130$away_team_goal, by=list(Category=matchMB0809s0130$home_team_api_id), FUN=sum)+
      aggregate(matchMB0809s0130$home_team_goal, by=list(Category=matchMB0809s0130$away_team_api_id), FUN=sum))
+
+# what if instead, we create two new columns - (1) home team goal differential (2) away team goal differential
+# we can then sum these using the prevoius code an avoid "adding" or "subtracting" the team_api_id's
+
+### (Better method) begin with stage (I): 1-30 ====
+
+head(matchMB0809s0130)
+home_team_goal_difT <- matchMB0809s0130$home_team_goal - matchMB0809s0130$away_team_goal
+away_team_goal_difT <- matchMB0809s0130$away_team_goal - matchMB0809s0130$home_team_goal
+
+# it works. check:
+subset(matchMB0809s01, select = c("home_team_api_id", "home_team_goal",
+                                  "away_team_api_id", "away_team_goal"))
+
+head(home_team_goal_difT)
+head(away_team_goal_difT)
+
+# adding two rows # testing with matchMB0809s0130, can later do it for matchMB or even just match
+
+matchMB0809s0130a <- dplyr::mutate(matchMB0809s0130, home_team_goal_difT = home_team_goal - away_team_goal)
+matchMB0809s0130a <- dplyr::mutate(matchMB0809s0130a, away_team_goal_difT = away_team_goal - home_team_goal)
+
+# (1) this shows home team (as target team) and goal differential
+aggregate(matchMB0809s0130a$home_team_goal_difT, by=list(Category=matchMB0809s0130$home_team_api_id), FUN=sum)
+# (2) this shows away team (as target team) and goal differential
+aggregate(matchMB0809s0130a$away_team_goal_difT, by=list(Category=matchMB0809s0130a$away_team_api_id), FUN=sum)
+
+# Next make a single col using (1) & (2) above, then aggregate() again, and that gives us total stage goalsdif per team
+
+homecol <- aggregate(matchMB0809s0130a$home_team_goal_difT, by=list(Category=matchMB0809s0130$home_team_api_id), FUN=sum)
+awaycol <- aggregate(matchMB0809s0130a$away_team_goal_difT, by=list(Category=matchMB0809s0130a$away_team_api_id), FUN=sum)
+onecol <- dplyr::bind_rows(homecol, awaycol)
+
+aggregate(onecol$x, by=list(Category=onecol$Category), FUN=sum)
+head(homecol)
+# NOTE: It seems aggregate() loses the column names when you save it as a variable
