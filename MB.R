@@ -150,6 +150,16 @@ statsMB3 <-
 statsMB3 <- dplyr::left_join(statsMB3, passedKEY, by = "team")
 unique(statsMB3$maxStage)
 
+# create league_id key
+leagueKEY <-
+  matchMB3 %>% 
+  select(team, league_id) %>% 
+  distinct()
+
+# left join league_id into statsMB3
+
+statsMB3 <- dplyr::left_join(statsMB3, leagueKEY, by = "team")
+
 # now we can do plot, ggplot, and regressions
 # note: we may want go back and add variable 'game' (value for each match is 1)
 # and variable homeORaway where home = 1 and away = 0
@@ -159,39 +169,98 @@ head(statsMB3)
 # plotting
 library(ggplot2)
 
-# clearly, scoring more points than your opponents helps win more games
-ggplot(data = statsMB3, aes(sgdiff, swins)) + geom_point() +
-  labs(title = "Goal Differential vs Wins") + theme(plot.title = element_text(hjust = 0.5))
-
-# color by furthest stage reached
-ggplot(data = statsMB3, aes(sgdiff, swins, col = factor(maxStage))) + geom_point() +
-  labs(title = "Goal Differential, Wins, Stage Reached") + theme(plot.title = element_text(hjust = 0.5))
-
-ggplot(data = statsMB3, aes(sgdiff, swins, col = factor(maxStage))) + geom_point() +
-  labs(title = "Goal Differential vs Wins")
-
-# with LOESS smooth:
-ggplot(data = statsMB3, aes(sgdiff, swins, col = maxStage)) +
-  geom_point() + scale_colour_discrete() + geom_smooth()
-
-# with OLS linear model:
-ggplot(data = statsMB3, aes(x = sgdiff, y = swins, col = factor(maxStage))) +
-  geom_point() + scale_colour_discrete() + geom_smooth(method = "lm")
-
-# goals vs wins
-ggplot(data = statsMB3, aes(sgoals, swins)) + geom_point()
-# goals vs wins, color by stage reached
-ggplot(data = statsMB3, aes(sgoals, swins, col = factor(maxStage))) + geom_point()
-# points vs wins, color by stage reached. wow, super linear relationship.
-ggplot(data = statsMB3, aes(spoints, swins, col = factor(maxStage))) + geom_point()
-# why is it more linear that goals or goal differential?
-
-# just goals on x, color by stage, add verticle lines
+# need to add identifier column
 statsMB3$statID <- seq.int(nrow(statsMB3))
-ggplot(data = statsMB3, aes(sgoals, statID, col = factor(maxStage))) + geom_point()
 
-# goal dif on x, color by stage
-ggplot(data = statsMB3, aes(sgdiff, statID, col = factor(maxStage))) + geom_point()
+# (1) view if teams with more points get to stage four. Also - not very good because this compares
+# all teams' points, both those that only did stage 1 and those that got to stage 4
+# interesting, because many teams with very low point made it to stage 4
+ggplot(data = statsMB3, aes(spoints, statID, col = factor(maxStage))) + geom_point() +
+  labs(title = "Points and Maximum Stage") + theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Points", y = "Teams")
 
-# points on x, color by stage
-ggplot(data = statsMB3, aes(spoints, statID, col = factor(maxStage))) + geom_point()
+
+# (2) view if teams with higher goal differential get to stage four
+# interesting, because many teams with a negative goal differential made it to stage 4
+ggplot(data = statsMB3, aes(sgdiff, statID, col = factor(maxStage))) + geom_point() +
+  labs(title = "Goal Differential and Maximum Stage") + theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Teams")
+
+# try filtering by season = 2008/2009, for less clutter
+test <- matchMB3 %>% 
+  filter(season == "2008/2009") %>% # can also add to filter: real_stage == "1". but still shows jumbled mess
+  group_by(team) %>%
+  summarise(sgoals = sum(goals), soppgoals = sum(opponent_goals), swins = sum(win),
+            slosses = sum(loss), sdraws = sum(draw), sgdiff = sum(goal_dif),
+            spoints = sum(points))
+
+# add identifier column  
+test$statID <- seq.int(nrow(test))
+
+# add maximum stage reached identifier column
+test <- dplyr::left_join(test, passedKEY, by = "team")
+
+# points acquired for each team, colored by maximum stage reached
+# still all over the place
+ggplot(data = test, aes(spoints, statID, col = factor(maxStage))) + geom_point() +
+  labs(title = "Points, 2008/2009") + theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Points", y = "Teams")
+
+# wins for each team, teams colored by maximum stage reached
+ggplot(data = test, aes(swins, statID, col = factor(maxStage))) + geom_point() +
+  labs(title = "Games won, 2008/2009") + theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Wins", y = "Teams")
+
+
+# x/y plots
+
+# plot points acquired against goal differential, all stages
+ggplot(data = statsMB3, aes(sgdiff, spoints, col = factor(maxStage))) + geom_point() +
+  labs(title = "Points vs Goal Differential") + theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Points")
+
+# same, but with geom_smooth()
+ggplot(data = statsMB3, aes(sgdiff, spoints, col = factor(maxStage))) + geom_point() +
+  labs(title = "Points vs Goal Differential") + theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Points") + geom_smooth(span = 1, level = 0)
+
+
+# plot points acquired against goal differential, stage 1
+ggplot(data = test, aes(sgdiff, spoints, col = factor(maxStage))) + geom_point() +
+  labs(title = "Pts & Goal Diff, Stage 1") + theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Points") + geom_smooth(method = "lm", level = 0)
+
+# regressions
+
+# linear: i don't like
+winLM <- lm(swins~sgdiff, data = statsMB3)
+summary(winLM)
+
+winLM <- lm(spoints~sgdiff, data = statsMB3)
+summary(winLM)
+
+# would not make sense to include sgdiff, sgoals, as independent variables together, multicollinearity
+
+# Logistic regression for Whether a team passes from stage 1 to stage 2
+
+stats4log <- matchMB3 %>% 
+  filter(real_stage == 1, season == "2008/2009") %>%
+  group_by(team) %>%
+  summarise(sgoals = sum(goals), soppgoals = sum(opponent_goals), swins = sum(win),
+            slosses = sum(loss), sdraws = sum(draw), sgdiff = sum(goal_dif),
+            spoints = sum(points))
+
+# add maximum stage reached identifier column
+stats4log <- dplyr::left_join(stats4log, passedKEY, by = "team")
+
+# make binary outcome variable == 1 if passed stage 1, 0 if not
+stats4log$passStage1 <- ifelse(stats4log$maxStage == 1, 0, 1)
+
+# logistic regression
+passLog <- glm(passStage1~sgdiff, data = stats4log, family = "binomial")
+summary(passLog)
+
+# while this suggests a correlation between goal differential and points scored (games won), it
+# also seems to show that goal differential doesn't seem to matter when it comes to passing to
+# stage 2. 
+ggplot(stats4log, aes(sgdiff, spoints, col = factor(passStage1))) + geom_point()
