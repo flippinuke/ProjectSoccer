@@ -1,341 +1,115 @@
 # prepare data for regs ====
-# bringing in additional variables to test on
-
-names(match)
-
-# the data that is brought in, we will want to add to the matchAN variables
-# including XML data (excpet goal - likely don't need)
-
-# decrease the data set size at first ====
+# libraries
 library(dplyr)
-matchAD1 <- match %>% 
-  filter(season == "2011/2012") %>%
-  select(country_id, league_id, season, stage, date, match_api_id,
-         home_team_api_id, away_team_api_id, home_team_goal, away_team_goal,
-         shoton, shotoff, foulcommit, card, cross, corner, possession)
-
 library(XML) # need this for xmlToList
-# library(plyr) # after done, use this to unload plyr: detach("package:vegan", unload=TRUE)
-# need plyr for our thing to work below
-# no longer need plyr
+library(magrittr) # need this for %<>%
+library(ggplot2)
+install.packages("ggdendro")
+library(ggdendro)
 
-# inspect the various XML variables, and see what we want
-# shoton, shotff, foulcommit, card, cross, corner, possession
-# let's start with possession
+# Data Category DF for dendrogram ====
+# create vector
+varname <- c((names(match)))
+# change vector to df
+dendro <- data.frame(varname)
+# Create second field - category of variable
+dendro$category[1:12] <- "Base Data"
+dendro$category[12:78] <- "Player Data"
+dendro$category[79:86] <- "XML Data"
+dendro$category[88:116] <- "Betting House Data"
 
-head(matchAD1[order(match$possession),])
+# continue later with this
 
-# create test df ====
-test <- matchAD1
+###########################################################################################
+##################### DF 1: HIGHEST LEVEL SUMMARY STATS: no XML data ###################### ====
+###########################################################################################
 
-# NOTE:
-# test is for 2011/2012 (moved to regsExcess.R)
-# testALL is for all seasons
+# reduce match to only necessary variables [no XML, has more observations]
+matchMB <- match %>% 
+  select(country_id, league_id, season, stage, date, match_api_id,
+         home_team_api_id, away_team_api_id, home_team_goal, away_team_goal)
 
-# remove rows that don't have data (consider imputation later) ====
+matchMB1 <- matchMB # to create the df that we will add to
+matchMB2 <- matchMB # to create the df that we will be adding to matchMB1
 
-# removes all rows in matchAD1$possession with NA
-test <- test[complete.cases(test$possession),]
+# change column names ====
+matchMB1 %<>% rename(team = home_team_api_id, goals = home_team_goal, opponent = away_team_api_id,
+                     opponent_goals = away_team_goal)
 
-# get rid of rows where test$possession contains only "<possession />"
-test <- test[!(test$possession == "<possession />"),]
+matchMB2 %<>% rename(team = away_team_api_id, goals = away_team_goal, opponent = home_team_api_id,
+                     opponent_goals = home_team_goal)
 
-# and get rid of rows where test$possession contains only "<possession />"
-test <- test[!(test$card == "<card />"),] # removes 40 more rows
+# add column to matchMB1 - home_or_away = H
+# add column to matchMB2 - home_or_away = A
+matchMB1$home_or_away <- c('H') # H & A for easy identification
+matchMB2$home_or_away <- c('A') # 
 
-# this works. don't touch it
-# gives length of possession by game for home team (by percentage of game)
-for (i in 1:length(test$possession)){
-  test$homePoss[i] <- as.character(as.data.frame(do.call(rbind, xmlToList(as.character(test$possession[i])))) %>%
-                                     filter(row_number() == n()) %>% 
-                                     select(homepos))
-}
+# create "doubled" data set:
+matchMB3 <- dplyr::bind_rows(matchMB1, matchMB2)
 
-# the above code occasionally grabs the wrong value. In all cases that I searched through (well over 1000),
-# it always moved the correct value one column to the left, to "awaypos." In those cases, the value in the
-# last row of "awaypos" should actually be under "homepos". I fixed that first by creating a column
-# test$awayPoss, then switching the necessary variables with the following:
+# add calculated fields: ====
+matchMB3 %<>%
+  mutate(win = ifelse(goals > opponent_goals, 1, 0), loss = ifelse(goals < opponent_goals, 1, 0),
+         draw = ifelse(goals == opponent_goals, 1, 0), goal_dif = goals - opponent_goals,
+         points = ifelse(goals > opponent_goals, 3,
+                         ifelse(goals == opponent_goals, 1, 0)))
 
-# length of possession by game for away team (by percentage of game)
-for (i in 1:length(test$possession)){
-  test$awayPoss[i] <- as.character(as.data.frame(do.call(rbind, xmlToList(as.character(test$possession[i])))) %>%
-                                     filter(row_number() == n()) %>% 
-                                     select(awaypos))
-}
-
-# replace the wrong homePoss value with the correct value
-# dplyr/magrittr version:
-test %<>%
-  mutate(homePoss = ifelse(nchar(homePoss > 10), awayPoss, homePoss))
-# base R version:
-test$homePoss <- ifelse(nchar(test$homePoss > 10), test$awayPoss, test$homePoss)
-
-# remove excess characters:
-test$homePoss <- as.integer(substr(test$homePossReal, start = 7, stop = 8))
-
-# create away team possession variable:
-test$awayPoss <- 100 - test$homePoss
-
-# next -
-# (1) inspect other xml cells ====
-# (2) create for loop for other xml cells
-
-### Add the rest of the XML variables: ====
-
-# number of shots on goal - both teams summed
-for (i in 1:length(test$shoton)){
-  test$nshoton[i] <- nrow(do.call(rbind, xmlToList(as.character(test$shoton[i]))))
-}
-
-# number of shots on goal - home team against away team
-for (i in 1: length(test$shoton)){
-  test$HTshoton[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$shoton[i])))) %>% 
-                            filter(player1 == test$home_team_api_id[i] |
-                                     sortorder == test$home_team_api_id[i] |
-                                     team == test$home_team_api_id[i] |
-                                     n == test$home_team_api_id[i]))
-}
-
-# number of shots on goal - away team against home team
-for (i in 1: length(test$shoton)){
-  test$ATshoton[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$shoton[i])))) %>% 
-                             filter(player1 == test$home_team_api_id[i] |
-                                      sortorder == test$away_team_api_id[i] |
-                                      team == test$away_team_api_id[i] |
-                                      n == test$away_team_api_id[i]))
-}
-
-# number of shots off goal - both teams summed
-for (i in 1:length(test$shotoff)){
-  test$nshotoff[i] <- nrow(do.call(rbind, xmlToList(as.character(test$shotoff[i]))))
-}
-
-# number of shots off goal - home team against away team
-for (i in 1: length(test$shotoff)){
-  test$HTshotoff[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$shotoff[i])))) %>% 
-                             filter(player1 == test$home_team_api_id[i] |
-                                      sortorder == test$home_team_api_id[i] |
-                                      team == test$home_team_api_id[i] |
-                                      n == test$home_team_api_id[i]))
-}
-
-# number of shots off goal - away team against home team
-for (i in 1: length(test$shotoff)){
-  test$ATshotoff[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$shotoff[i])))) %>% 
-                             filter(player1 == test$home_team_api_id[i] |
-                                      sortorder == test$away_team_api_id[i] |
-                                      team == test$away_team_api_id[i] |
-                                      n == test$away_team_api_id[i]))
-}
-
-# number of fouls committed - both teams summed # this takes a while to run
-for (i in 1:length(test$foulcommit)){
-  test$nfoulcommit[i] <- nrow(do.call(rbind, xmlToList(as.character(test$foulcommit[i]))))
-}
-
-# number of fouls committed - home team against away team
-for (i in 1: length(test$foulcommit)){
-  test$HTfouls[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$foulcommit[i])))) %>% 
-                              filter(player1 == test$home_team_api_id[i] |
-                                       sortorder == test$home_team_api_id[i] |
-                                       team == test$home_team_api_id[i] |
-                                       n == test$home_team_api_id[i]))
-}
-
-# number of fouls committed - away team against home team
-for (i in 1: length(test$foulcommit)){
-  test$ATfouls[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$foulcommit[i])))) %>% 
-                              filter(player1 == test$home_team_api_id[i] |
-                                       sortorder == test$away_team_api_id[i] |
-                                       team == test$away_team_api_id[i] |
-                                       n == test$away_team_api_id[i]))
-}
-
-# number of cards given - both yellow and red for both teams, summed
-for (i in 1:length(test$card)){
-  test$ncard[i] <- nrow(do.call(rbind, xmlToList(as.character(test$card[i]))))
-}
-
-# number of home team cards (both yellow and red)
-for (i in 1:length(test$card)){
-  test$HTcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$card[i])))) %>% 
-                            filter(sortorder == test$home_team_api_id[i] |
-                                     team == test$home_team_api_id[i] |
-                                     n == test$home_team_api_id[i]))
-}
-
-# number of yellow cards for the home team
-for (i in 1: length(test$card)){
-  test$htYcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$card[i])))) %>% 
-                            filter(sortorder == test$home_team_api_id[i] |
-                                     team == test$home_team_api_id[i] |
-                                     n == test$home_team_api_id[i],
-                                   comment == "y"))
-}
-
-# number of red cards for the home team
-for (i in 1: length(test$card)){
-  test$htRcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$card[i])))) %>% 
-                            filter(sortorder == test$home_team_api_id[i] |
-                                     team == test$home_team_api_id[i] |
-                                     n == test$home_team_api_id[i],
-                                   comment == "r"))
-}
-
-# number of away team cards (both yellow and red)
-for (i in 1:length(test$card)){
-  test$ATcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$card[i])))) %>% 
-                           filter(sortorder == test$away_team_api_id[i] |
-                                    team == test$away_team_api_id[i] |
-                                    n == test$away_team_api_id[i]))
-}
-
-# number of yellow cards for the away team
-for (i in 1: length(test$card)){
-  test$atYcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$card[i])))) %>% 
-                            filter(sortorder == test$away_team_api_id[i] |
-                                     team == test$away_team_api_id[i] |
-                                     n == test$away_team_api_id[i],
-                                   comment == "y"))
-}
-
-# number of red cards for the away team
-for (i in 1: length(test$card)){
-  test$atRcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$card[i])))) %>% 
-                            filter(sortorder == test$away_team_api_id[i] |
-                                     team == test$away_team_api_id[i] |
-                                     n == test$away_team_api_id[i],
-                                   comment == "r"))
-}
-
-### number of crosses, both teams summed # take a while to run # cleaner, but still some bad formatting
-for (i in 1:length(test$cross)){
-  test$ncross[i] <- nrow(do.call(rbind, xmlToList(as.character(test$cross[i]))))
-}
-
-# number of crosses performed by home team
-for (i in 1:length(test$cross)){
-  test$HTcross[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$cross[i])))) %>% 
-                              filter(player1 == test$home_team_api_id[i] |
-                                       sortorder == test$home_team_api_id[i] |
-                                       team == test$home_team_api_id[i] |
-                                       n == test$home_team_api_id[i]))
-}
-
-# number of crosses performed by away team
-for (i in 1:length(test$cross)){
-  test$ATcross[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$cross[i])))) %>% 
-                            filter(player1 == test$away_team_api_id[i] |
-                                     sortorder == test$away_team_api_id[i] |
-                                     team == test$away_team_api_id[i] |
-                                     n == test$away_team_api_id[i]))
-}
-
-# number of corners, both teams summed
-for (i in 1:length(test$corner)){
-  test$ncorner[i] <- nrow(do.call(rbind, xmlToList(as.character(test$corner[i]))))
-}
-names(test)
-
-# number of corners performed by home team
-for (i in 1:length(test$corner)){
-  test$HTcorners[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$corner[i])))) %>% 
-                                         filter(player1 == test$home_team_api_id[i] |
-                                                  sortorder == test$home_team_api_id[i] |
-                                                  team == test$home_team_api_id[i] |
-                                                  n == test$home_team_api_id[i]))
-}
-
-# number of corners performed by away team
-for (i in 1:length(test$corner)){
-  test$ATcorners[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(test$corner[i])))) %>% 
-                              filter(player1 == test$away_team_api_id[i] |
-                                       sortorder == test$away_team_api_id[i] |
-                                       team == test$away_team_api_id[i] |
-                                       n == test$away_team_api_id[i]))
-}
+# stats df (no XML data) ==== 
+statsMB3 <-
+  matchMB3 %>%
+  group_by(team, season, league_id) %>% # if add "season" here, it affects the ggplot (and we probably want to)
+  summarise(sgoals = sum(goals), soppgoals = sum(opponent_goals), swins = sum(win),
+            slosses = sum(loss), sdraws = sum(draw), sgdiff = sum(goal_dif),
+            spoints = sum(points), maxStage = (ifelse(max(stage) < 31, '30 matches',
+                                                      ifelse(max(stage) > 30 & max(stage) < 35, '34 matches',
+                                                             ifelse(max(stage) > 34 & max(stage) < 37, '36 matches', '38 matches'))))) # max(stage) instead of max(real_stage) (consider, since we added 'season' to group_by()
 
 
+# this shows that the dispersion is similar, regardless of how many games a league plays ====
+ggplot(data = statsMB3, aes(sgdiff, spoints, col = factor(maxStage))) + geom_point() +
+  labs(title = "Points vs Goal Differential") + theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Points") +
+  labs(colour = "Season Length")
 
-# a bunch of head()s ====
-
-head(test$nshoton, n = 50)
-head(test$HTshoton, n = 50)
-head(test$ATshoton, n = 50)
-
-head(test$nshotoff, n = 50)
-head(test$HTshotoff, n = 50)
-head(test$ATshotoff, n = 50)
-
-head(test$nfoulcommit, n = 50)
-head(test$HTfouls, n = 50)
-head(test$ATfouls, n = 50)
-
-head(test$HTcard, n = 50)
-head(test$htYcard, n = 50)
-head(test$htRcard, n = 50)
-head(test$ATcard, n = 50)
-head(test$atYcard, n = 50)
-head(test$atRcard, n = 50)
-
-head(test$HTcross, n = 50) # seems to have worked
-head(test$ATcross, n = 50)
-head(test$HTcorners, n = 50)
-head(test$ATcorners, n = 50)
-
-names(test)
-
-test$win <- ifelse(test$home_team_goal > test$away_team_goal, 1, 0)
-test$draw <- ifelse(test$home_team_goal == test$away_team_goal, 1, 0)
-test$goaldiff <- test$home_team_goal - test$away_team_goal
-
-# create other variables, such as:
-# win/loss/draw - this can be made with 2 variables (win/not, draw/not)
-#  - and the combination of those two binary variables tells you whether it was a win, draw, or loss
-# goal differential
-# maybe: points acquired
-# 
-# And then think about whether you want to "double" the data set
 
 ###########################################################################################
 ################################ VARIABLES FOR ALL SEASONS ################################ ====
 ###########################################################################################
 
+# testALL variable
+# names(match)
 
-# decrease the data set size - only  include desired variables ====
-library(dplyr)
+# Create OG data frame and XML data ====
+# include only desired variables
 matchALL <- match %>%
   select(country_id, league_id, season, stage, date, match_api_id,
          home_team_api_id, away_team_api_id, home_team_goal, away_team_goal,
          shoton, shotoff, foulcommit, card, cross, corner, possession)
 
-library(XML) # need this for xmlToList
-
 # create test df ====
 testALL <- matchALL
 
 # remove rows that don't have data (consider imputation later) ====
+testALL <- testALL[complete.cases(testALL$possession),] # removes all rows in matchAD1$possession with NA - size: 25979 rows to 14217 rows
+testALL <- testALL[!(testALL$possession == "<possession />"),] # remove rows where test$possession contains only "<possession />" - size: 14217 rows to 8419 rows
+testALL <- testALL[!(testALL$card == "<card />"),] # remove rows where test$possession contains only "<possession />" - # size: from 8419 to 8125 
+testALL <- testALL[!(testALL$corner == "<corner />"),] # remove rows where test$corner contains only "<corner />"
 
-# removes all rows in matchAD1$possession with NA - size: 25979 rows to 14217 rows
-testALL <- testALL[complete.cases(testALL$possession),]
+# Extract necessary data from nested XML data:
+# 1. replace incorrect variables with proper ones
+# 2. remove excess characters
+# Time consuming - takes about 12 hours to run
 
-# get rid of rows where test$possession contains only "<possession />" - size: 14217 rows to 8419 rows
-testALL <- testALL[!(testALL$possession == "<possession />"),]
-
-# and get rid of rows where test$possession contains only "<possession />"
-testALL <- testALL[!(testALL$card == "<card />"),] # removes 40 more rows from 8419 to 8125
-
-
-# gives length of possession by during game for home team (by percentage of game) ====
-# this works. don't touch it (left to let this run overnight)
+# length of possession for home team (by percentage of game) ==== (< 13 minutes)
 for (i in 1:length(testALL$possession)){
   testALL$homePoss[i] <- as.character(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$possession[i])))) %>%
-                                     filter(row_number() == n()) %>% 
-                                     select(homepos))
+                                        filter(row_number() == n()) %>% 
+                                        select(homepos))
 }
 
+# homePoss should always be a 2 digit number
 # this shows us that 614 of the variables from above were brought in incorrectly
-testALL$homePoss[which(nchar(testALL$homePoss) > 10)]
+testALL$homePoss[which(nchar(testALL$homePoss) > 10)] # perhaps no longer works because was fixed in later code?
 
 # dplyr version:
 testALL %>% 
@@ -343,23 +117,34 @@ testALL %>%
   filter(nchar(homePoss) > 10) %>% 
   count
 
-# 1. replace incorrect variables with proper ones
-# 2. remove excess characters
-
-# Start by finding away team possesion:
-# length of possession by game for away team (by percentage of game) ====
+# length of possession for away team (by percentage of game) ==== (need this to clean homePoss df) (< 12 minutes)
 for (i in 1:length(testALL$possession)){
   testALL$awayPoss[i] <- as.character(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$possession[i])))) %>%
-                                     filter(row_number() == n()) %>% 
-                                     select(awaypos))
+                                        filter(row_number() == n()) %>% 
+                                        select(awaypos))
 }
+
+# this code shows use that the variable 'stage' means 'game' or match' ====
+# stage 1 means "game 1" (in a season), stage 2 means "game 2" (in a season), etc.
+# English premier league has 38 games in a season. 19 home and 19 away games per team
+
+# match %>%
+#   filter(stage == 1, league_id == 1729, season == '2015/2016') %>% 
+#   select(home_team_api_id, away_team_api_id) %>% 
+#   arrange(home_team_api_id)
+# 
+# match %>%
+#   filter(stage == 2, league_id == 1729, season == '2015/2016') %>% 
+#   select(home_team_api_id, away_team_api_id) %>% 
+#   arrange(away_team_api_id)
+
 
 # replace the wrong homePoss values with the correct values
 # dplyr/magrittr version:
 testALL %<>%
   mutate(homePoss = ifelse(nchar(homePoss > 10), awayPoss, homePoss))
-# base R version:
-testALL$homePoss <- ifelse(nchar(testALL$homePoss > 10), testALL$awayPoss, testALL$homePoss)
+# base R version: REMOVE if above runs correctly
+# testALL$homePoss <- ifelse(nchar(testALL$homePoss > 10), testALL$awayPoss, testALL$homePoss)
 
 # remove excess characters:
 testALL$homePoss <- as.integer(substr(testALL$homePoss, start = 7, stop = 8))
@@ -368,280 +153,481 @@ testALL$homePoss <- as.integer(substr(testALL$homePoss, start = 7, stop = 8))
 testALL$awayPoss <- 100 - testALL$homePoss
 
 # next -
-# (1) inspect other xml cells ====
+# (1) inspect other xml cells
 # (2) create for loop for other xml cells
 
-### Add the rest of the XML variables: ====
+# number of shots on goal - both teams summed (SKIP?) ====
+# for (i in 1:length(testALL$shoton)){
+#   testALL$nshoton[i] <- nrow(do.call(rbind, xmlToList(as.character(testALL$shoton[i]))))
+# }
 
-# number of shots on goal - both teams summed ====
-for (i in 1:length(testALL$shoton)){
-  testALL$nshoton[i] <- nrow(do.call(rbind, xmlToList(as.character(testALL$shoton[i]))))
-}
-
-# number of shots on goal - home team against away team ====
+# number of shots on goal - home team against away team ==== (~35 minutes to run)
 for (i in 1: length(testALL$shoton)){
   testALL$HTshoton[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$shoton[i])))) %>% 
-                             filter(player1 == testALL$home_team_api_id[i] |
-                                      sortorder == testALL$home_team_api_id[i] |
-                                      team == testALL$home_team_api_id[i] |
-                                      n == testALL$home_team_api_id[i]))
+                                filter(player1 == testALL$home_team_api_id[i] |
+                                         sortorder == testALL$home_team_api_id[i] |
+                                         team == testALL$home_team_api_id[i] |
+                                         n == testALL$home_team_api_id[i]))
 }
 
-# number of shots on goal - away team against home team ====
+# number of shots on goal - away team against home team ==== ( < 36 minutes)
 for (i in 1: length(testALL$shoton)){
   testALL$ATshoton[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$shoton[i])))) %>% 
-                             filter(player1 == testALL$home_team_api_id[i] |
-                                      sortorder == testALL$away_team_api_id[i] |
-                                      team == testALL$away_team_api_id[i] |
-                                      n == testALL$away_team_api_id[i]))
+                                filter(player1 == testALL$home_team_api_id[i] |
+                                         sortorder == testALL$away_team_api_id[i] |
+                                         team == testALL$away_team_api_id[i] |
+                                         n == testALL$away_team_api_id[i]))
 }
 
-# number of shots off goal - both teams summed ====
-for (i in 1:length(testALL$shotoff)){
-  testALL$nshotoff[i] <- nrow(do.call(rbind, xmlToList(as.character(testALL$shotoff[i]))))
-}
+# number of shots off goal - both teams summed (SKIP?) ====
+# for (i in 1:length(testALL$shotoff)){
+#   testALL$nshotoff[i] <- nrow(do.call(rbind, xmlToList(as.character(testALL$shotoff[i]))))
+# }
 
-# number of shots off goal - home team against away team ====
+# number of shots off goal - home team against away team ==== ( < 44 minutes)
 for (i in 1: length(testALL$shotoff)){
   testALL$HTshotoff[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$shotoff[i])))) %>% 
-                              filter(player1 == testALL$home_team_api_id[i] |
-                                       sortorder == testALL$home_team_api_id[i] |
-                                       team == testALL$home_team_api_id[i] |
-                                       n == testALL$home_team_api_id[i]))
+                                 filter(player1 == testALL$home_team_api_id[i] |
+                                          sortorder == testALL$home_team_api_id[i] |
+                                          team == testALL$home_team_api_id[i] |
+                                          n == testALL$home_team_api_id[i]))
 }
 
-# number of shots off goal - away team against home team ====
+# number of shots off goal - away team against home team ==== ( < 24 minutes)
 for (i in 1: length(testALL$shotoff)){
   testALL$ATshotoff[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$shotoff[i])))) %>% 
-                              filter(player1 == testALL$home_team_api_id[i] |
-                                       sortorder == testALL$away_team_api_id[i] |
-                                       team == testALL$away_team_api_id[i] |
-                                       n == testALL$away_team_api_id[i]))
+                                 filter(player1 == testALL$home_team_api_id[i] |
+                                          sortorder == testALL$away_team_api_id[i] |
+                                          team == testALL$away_team_api_id[i] |
+                                          n == testALL$away_team_api_id[i]))
 }
 
-# number of fouls committed - both teams summed # this takes a while to run ====
-for (i in 1:length(testALL$foulcommit)){
-  testALL$nfoulcommit[i] <- nrow(do.call(rbind, xmlToList(as.character(testALL$foulcommit[i]))))
-}
+# number of fouls committed - both teams summed # this takes a while to run (SKIP?) ====
+# for (i in 1:length(testALL$foulcommit)){
+#   testALL$nfoulcommit[i] <- nrow(do.call(rbind, xmlToList(as.character(testALL$foulcommit[i]))))
+# }
 
-# number of fouls committed - home team against away team ====
+# number of fouls - home team against away team # ( < 1 hr 30 minutes) - works!- YES
 for (i in 1: length(testALL$foulcommit)){
-  testALL$HTfouls[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$foulcommit[i])))) %>% 
-                            filter(player1 == testALL$home_team_api_id[i] |
-                                     sortorder == testALL$home_team_api_id[i] |
-                                     team == testALL$home_team_api_id[i] |
-                                     n == testALL$home_team_api_id[i]))
-}
+  temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$foulcommit[i]))))
+  if('player1' %in% colnames(temp)) {
+    temp %<>%
+      filter(player1 == testALL$home_team_api_id[i] |
+               sortorder == testALL$home_team_api_id[i] |
+               team == testALL$home_team_api_id[i] |
+               n == testALL$home_team_api_id[i]) } else {
+                 temp %<>%
+                   filter(sortorder == testALL$home_team_api_id[i] |
+                            team == testALL$home_team_api_id[i] |
+                            n == testALL$home_team_api_id[i])}
+  testALL$HTfouls[i] <- nrow(temp)}
 
-# number of fouls committed - away team against home team ====
+# number of fouls - away team against home team # ( < 1 hr 30 minutes) - works!- YES
 for (i in 1: length(testALL$foulcommit)){
-  testALL$ATfouls[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$foulcommit[i])))) %>% 
-                            filter(player1 == testALL$home_team_api_id[i] |
-                                     sortorder == testALL$away_team_api_id[i] |
-                                     team == testALL$away_team_api_id[i] |
-                                     n == testALL$away_team_api_id[i]))
-}
+  temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$foulcommit[i]))))
+  if('player1' %in% colnames(temp)) {
+    temp %<>%
+      filter(player1 == testALL$away_team_api_id[i] |
+               sortorder == testALL$away_team_api_id[i] |
+               team == testALL$away_team_api_id[i] |
+               n == testALL$away_team_api_id[i]) } else {
+                 temp %<>%
+                   filter(sortorder == testALL$away_team_api_id[i] |
+                            team == testALL$away_team_api_id[i] |
+                            n == testALL$away_team_api_id[i])}
+  testALL$ATfouls[i] <- nrow(temp)}
 
-# number of cards given - both yellow and red for both teams, summed ====
-for (i in 1:length(testALL$card)){
-  testALL$ncard[i] <- nrow(do.call(rbind, xmlToList(as.character(testALL$card[i]))))
-}
+# number of cards given - both yellow and red for both teams, summed (SKIP?) ====
+# for (i in 1:length(testALL$card)){
+#   testALL$ncard[i] <- nrow(do.call(rbind, xmlToList(as.character(testALL$card[i]))))
+# }
 
-# number of home team cards (both yellow and red) ====
-for (i in 1:length(testALL$card)){
-  testALL$HTcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$card[i])))) %>% 
-                           filter(sortorder == testALL$home_team_api_id[i] |
-                                    team == testALL$home_team_api_id[i] |
-                                    n == testALL$home_team_api_id[i]))
-}
+# number of home team cards (both yellow and red) (SKIP?) ====
+# for (i in 1:length(testALL$card)){
+#   testALL$HTcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$card[i])))) %>% 
+#                               filter(sortorder == testALL$home_team_api_id[i] |
+#                                        team == testALL$home_team_api_id[i] |
+#                                        n == testALL$home_team_api_id[i]))
+# }
 
-# number of yellow cards for the home team ====
+# number of yellow cards for the home team ==== ( < 28 minutes)
 for (i in 1: length(testALL$card)){
   testALL$htYcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$card[i])))) %>% 
-                            filter(sortorder == testALL$home_team_api_id[i] |
-                                     team == testALL$home_team_api_id[i] |
-                                     n == testALL$home_team_api_id[i],
-                                   comment == "y"))
+                               filter(sortorder == testALL$home_team_api_id[i] |
+                                        team == testALL$home_team_api_id[i] |
+                                        n == testALL$home_team_api_id[i],
+                                      comment == "y"))
 }
 
-# number of red cards for the home team ====
+# number of red cards for the home team ==== ( < 30 minutes)
 for (i in 1: length(testALL$card)){
   testALL$htRcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$card[i])))) %>% 
-                            filter(sortorder == testALL$home_team_api_id[i] |
-                                     team == testALL$home_team_api_id[i] |
-                                     n == testALL$home_team_api_id[i],
-                                   comment == "r"))
+                               filter(sortorder == testALL$home_team_api_id[i] |
+                                        team == testALL$home_team_api_id[i] |
+                                        n == testALL$home_team_api_id[i],
+                                      comment == "r"))
 }
 
-# number of away team cards (both yellow and red) ====
-for (i in 1:length(testALL$card)){
-  testALL$ATcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$card[i])))) %>% 
-                           filter(sortorder == testALL$away_team_api_id[i] |
-                                    team == testALL$away_team_api_id[i] |
-                                    n == testALL$away_team_api_id[i]))
-}
+# number of away team cards (both yellow and red) (SKIP?) ====
+# for (i in 1:length(testALL$card)){
+#   testALL$ATcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$card[i])))) %>% 
+#                               filter(sortorder == testALL$away_team_api_id[i] |
+#                                        team == testALL$away_team_api_id[i] |
+#                                        n == testALL$away_team_api_id[i]))
+# }
 
-# number of yellow cards for the away team ====
+# number of yellow cards for the away team ==== ( < 30 minutes)
 for (i in 1: length(testALL$card)){
   testALL$atYcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$card[i])))) %>% 
-                            filter(sortorder == testALL$away_team_api_id[i] |
-                                     team == testALL$away_team_api_id[i] |
-                                     n == testALL$away_team_api_id[i],
-                                   comment == "y"))
+                               filter(sortorder == testALL$away_team_api_id[i] |
+                                        team == testALL$away_team_api_id[i] |
+                                        n == testALL$away_team_api_id[i],
+                                      comment == "y"))
 }
 
-# number of red cards for the away team ====
+# number of red cards for the away team ==== ( < 33 minutes)
 for (i in 1: length(testALL$card)){
   testALL$atRcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$card[i])))) %>% 
-                            filter(sortorder == testALL$away_team_api_id[i] |
-                                     team == testALL$away_team_api_id[i] |
-                                     n == testALL$away_team_api_id[i],
-                                   comment == "r"))
+                               filter(sortorder == testALL$away_team_api_id[i] |
+                                        team == testALL$away_team_api_id[i] |
+                                        n == testALL$away_team_api_id[i],
+                                      comment == "r"))
 }
 
-### number of crosses, both teams summed # take a while to run # cleaner, but still some bad formatting ====
-for (i in 1:length(testALL$cross)){
-  testALL$ncross[i] <- nrow(do.call(rbind, xmlToList(as.character(testALL$cross[i]))))
-}
+### number of crosses, both teams summed # take a while to run (SKIP?) ====
+# for (i in 1:length(testALL$cross)){
+#   testALL$ncross[i] <- nrow(do.call(rbind, xmlToList(as.character(testALL$cross[i]))))
+# }
 
-# number of crosses performed by home team ====
+# number of crosses performed by home team ==== ("Error: player 1 not found") # ( < 1 hr 13 min)
 for (i in 1:length(testALL$cross)){
   testALL$HTcross[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$cross[i])))) %>% 
-                            filter(player1 == testALL$home_team_api_id[i] |
-                                     sortorder == testALL$home_team_api_id[i] |
-                                     team == testALL$home_team_api_id[i] |
-                                     n == testALL$home_team_api_id[i]))
+                               filter(player1 == testALL$home_team_api_id[i] |
+                                        sortorder == testALL$home_team_api_id[i] |
+                                        team == testALL$home_team_api_id[i] |
+                                        n == testALL$home_team_api_id[i]))
 }
 
-# number of crosses performed by away team ====
-for (i in 1:length(testALL$cross)){
-  testALL$ATcross[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$cross[i])))) %>% 
-                            filter(player1 == testALL$away_team_api_id[i] |
-                                     sortorder == testALL$away_team_api_id[i] |
-                                     team == testALL$away_team_api_id[i] |
-                                     n == testALL$away_team_api_id[i]))
-}
+# david version - YES
+for (i in 1: length(testALL$cross)){
+  temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$cross[i]))))
+  if('player1' %in% colnames(temp)) {
+    temp %<>%
+      filter(player1 == testALL$home_team_api_id[i] |
+               sortorder == testALL$home_team_api_id[i] |
+               team == testALL$home_team_api_id[i] |
+               n == testALL$home_team_api_id[i]) } else {
+                 temp %<>%
+                   filter(sortorder == testALL$home_team_api_id[i] |
+                            team == testALL$home_team_api_id[i] |
+                            n == testALL$home_team_api_id[i])}
+  testALL$HTcross[i] <- nrow(temp)}
 
-# number of corners, both teams summed ====
-for (i in 1:length(testALL$corner)){
-  testALL$ncorner[i] <- nrow(do.call(rbind, xmlToList(as.character(testALL$corner[i]))))
-}
+testALL$HTcross[5001:6000] # 5076
+tail(testALL$HTcross, n = 1000)
 
-# number of corners performed by home team ====
+# number of crosses performed by away team ==== # david version - YES ====
+for (i in 1: length(testALL$cross)){
+  temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$cross[i]))))
+  if('player1' %in% colnames(temp)) {
+    temp %<>%
+      filter(player1 == testALL$away_team_api_id[i] |
+               sortorder == testALL$away_team_api_id[i] |
+               team == testALL$away_team_api_id[i] |
+               n == testALL$away_team_api_id[i]) } else {
+                 temp %<>%
+                   filter(sortorder == testALL$away_team_api_id[i] |
+                            team == testALL$away_team_api_id[i] |
+                            n == testALL$away_team_api_id[i])}
+  testALL$ATcross[i] <- nrow(temp)}
+
+testALL$ATcross[5001:6000] # 5076
+tail(testALL$ATcross, n = 1000)
+# number of corners, both teams summed (SKIP?) ==== 
+# for (i in 1:length(testALL$corner)){
+#   testALL$ncorner[i] <- nrow(do.call(rbind, xmlToList(as.character(testALL$corner[i]))))
+# }
+
+# number of corners performed by home team ==== ("Error: player 1 not found") (~ 8 minutes to come to the error)
 for (i in 1:length(testALL$corner)){
   testALL$HTcorners[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$corner[i])))) %>% 
-                              filter(player1 == testALL$home_team_api_id[i] |
-                                       sortorder == testALL$home_team_api_id[i] |
-                                       team == testALL$home_team_api_id[i] |
-                                       n == testALL$home_team_api_id[i]))
+                                 filter(player1 == testALL$home_team_api_id[i] |
+                                          sortorder == testALL$home_team_api_id[i] |
+                                          team == testALL$home_team_api_id[i] |
+                                          n == testALL$home_team_api_id[i]))
 }
 
-# number of corners performed by away team ====
+# david version - YES!
+for (i in 1: length(testALL$corner)){
+  temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$corner[i]))))
+  if('player1' %in% colnames(temp)) {
+    temp %<>%
+      filter(player1 == testALL$home_team_api_id[i] |
+               sortorder == testALL$home_team_api_id[i] |
+               team == testALL$home_team_api_id[i] |
+               n == testALL$home_team_api_id[i]) } else {
+                 temp %<>%
+                   filter(sortorder == testALL$home_team_api_id[i] |
+                            team == testALL$home_team_api_id[i] |
+                            n == testALL$home_team_api_id[i])}
+  testALL$HTcorners[i] <- nrow(temp)}
+
+tail(testALL$HTcorners, n = 1000)
+# number of corners performed by away team ==== (Error: second argument must be a list)
 for (i in 1:length(testALL$corner)){
   testALL$ATcorners[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$corner[i])))) %>% 
-                              filter(player1 == testALL$away_team_api_id[i] |
-                                       sortorder == testALL$away_team_api_id[i] |
-                                       team == testALL$away_team_api_id[i] |
-                                       n == testALL$away_team_api_id[i]))
+                                 filter(player1 == testALL$away_team_api_id[i] |
+                                          sortorder == testALL$away_team_api_id[i] |
+                                          team == testALL$away_team_api_id[i] |
+                                          n == testALL$away_team_api_id[i]))
 }
 
-## I let this run overnight. It was running for 10 hours when I left for work. My guess is it took about 12 hours
+# david version - YES?
+for (i in 1: length(testALL$corner)){
+  temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$corner[i]))))
+  if('player1' %in% colnames(temp)) {
+    temp %<>%
+      filter(player1 == testALL$away_team_api_id[i] |
+               sortorder == testALL$away_team_api_id[i] |
+               team == testALL$away_team_api_id[i] |
+               n == testALL$away_team_api_id[i]) } else {
+                 temp %<>%
+                   filter(sortorder == testALL$away_team_api_id[i] |
+                            team == testALL$away_team_api_id[i] |
+                            n == testALL$away_team_api_id[i])}
+  testALL$ATcorners[i] <- nrow(temp)}
 
-# create goal differential variable ====
-testALL$goaldiff <- testALL$home_team_goal - testALL$away_team_goal
+testALL$ATcorners
+
+(do.call(rbind, xmlToList(as.character(testALL$corner[827]))))
+(do.call(rbind, xmlToList(as.character(testALL$corner[828]))))
+
+head(testALL$corner, n = 200)
+## I let this run overnight. It was running for 10 hours when I left for work. My guess is it took about 12 hours
+## Skipping certain above variables should make it faster. If needed for later analysis,
+## then use basic arithmetic to re-create variables.
+
+
+# goal differential ====
+testALL$HTgoaldiff <- testALL$home_team_goal - testALL$away_team_goal # for home team
+testALL$ATgoaldiff <- testALL$away_team_goal - testALL$home_team_goal # for away team
 
 # win binary variable ====
-
 testALL %<>%
-  mutate(win = ifelse(home_team_goal > away_team_goal, 1, 0))
+  mutate(HTwin = ifelse(home_team_goal > away_team_goal, 1, 0))
 
 # draw binary variable ====
 testALL %<>%
-  mutate(draw = ifelse(home_team_goal == away_team_goal, 1, 0))
+  mutate(HTdraw = ifelse(home_team_goal == away_team_goal, 1, 0))
 
-## xx ##  
-  
-# use this code type to check individual XML cells/df's if necessary
-do.call(rbind, xmlToList(as.character(testALL$possession[73])))
+# create HT points variable
+testALL$HTpoints <- ifelse(testALL$HTwin == 1, 3,
+                           ifelse(testALL$HTdraw == 1, 1, 0))
 
-# play with regressions ====
-
-sort(names(testALL))
-
-testLinReg <- lm(goaldiff~HTcorners + HTcross + HTshoton +
-                   ATcorners + ATcross + ATshoton +
-                   htYcard + htRcard + atYcard + atRcard, data = testALL)
-
-# this model shows us that HTshotoff, ATshotoff, HTfouls, and ATfouls are not significant at any meaningful levels
-testLinReg <- lm(goaldiff~homePoss +
-                   HTshoton + ATshoton + HTshotoff + ATshotoff +
-                   HTfouls + ATfouls + HTcard + ATcard +
-                   HTcross + ATcross + HTcorners + ATcorners, data = testALL)
-
-# this model has variables all with signficance past the * level
-# the R-squared values are low, but that makes sense given the unpredictability of humans
-testLinReg <- lm(goaldiff~homePoss +
-                   HTshoton + ATshoton +
-                   HTcard + ATcard +
-                   HTcross + ATcross + HTcorners + ATcorners, data = testALL)
-
-summary(testLinReg)
-
-# creating some plots will help show why the R-squared is low:
-library(ggplot2)
-testALL0809 <- testALL %>%
-  filter(season == "2008/2009")
-
-# plots ====
-# maybe plots can explain the low R2?
-# because the x and y axis points are all low number integers (y axis is about -5 to 7,
-# and x axis is about 0 to 8)
-ggplot(testALL0809, aes(HTcard, goaldiff)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL0809, aes(ATcard, goaldiff)) + geom_point() + geom_jitter() + geom_smooth()
-# interesting, because more shots on for home team doesn't seem to help their goal differential
-# maybe that's because we're plotting against goaldiff? let's try straight goals (below)
-ggplot(testALL0809, aes(HTshoton, goaldiff)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL0809, aes(ATshoton, goaldiff)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL0809, aes(HTcross, goaldiff)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL0809, aes(ATcross, goaldiff)) + geom_point() + geom_jitter() + geom_smooth()
-
-ggplot(testALL0809, aes(HTcard, home_team_goal)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL0809, aes(ATcard, home_team_goal)) + geom_point() + geom_jitter() + geom_smooth()
-# try this:
-# (still not an upward trend. rather, between 5 and 10 shots on seems to be best)
-# perhaps it has to do with the quality of shots on?
-ggplot(testALL0809, aes(HTshoton, home_team_goal)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL0809, aes(ATshotoff, home_team_goal)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL0809, aes(HTcross, home_team_goal)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL0809, aes(ATcross, home_team_goal)) + geom_point() + geom_jitter() + geom_smooth()
-
-# plots for all years:
-# (a few too many points; a little longer to run)
-ggplot(testALL, aes(HTcard, goaldiff)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL, aes(ATcard, goaldiff)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL, aes(HTshoton, goaldiff)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL, aes(ATshoton, goaldiff)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL, aes(HTcross, goaldiff)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL, aes(ATcross, goaldiff)) + geom_point() + geom_jitter() + geom_smooth()
-
-ggplot(testALL, aes(HTcard, home_team_goal)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL, aes(ATcard, home_team_goal)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL, aes(HTshoton, home_team_goal)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL, aes(ATshotoff, home_team_goal)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL, aes(HTcross, home_team_goal)) + geom_point() + geom_jitter() + geom_smooth()
-ggplot(testALL, aes(ATcross, home_team_goal)) + geom_point() + geom_jitter() + geom_smooth()
-
-# maybe they don't seem useful because there are multiple dots stacked on each
-# other, and we need to do some sort of jitter to show how many teams are above
-# goaldiff = 0 and below
+# create AT points variable
+testALL %<>%
+  mutate(ATpoints = ifelse(HTwin == 1, 0,
+                           ifelse(HTdraw == 1, 1, 3)))
 
 
+# dragon removes the nested XML data that we no longer need
+dragon <- testALL %>% 
+  select(country_id, league_id, season, stage, date, match_api_id,
+         home_team_api_id, away_team_api_id, home_team_goal, away_team_goal,
+         homePoss, awayPoss,
+         HTshoton, HTshotoff, HTfouls, HTcard, htYcard, htRcard, HTcross, HTcorners,
+         ATshoton, ATshotoff, ATfouls, ATcard, atYcard, atRcard, ATcross, ATcorners,
+         HTgoaldiff, HTwin, HTdraw, HTpoints,
+         ATgoaldiff, ATpoints)
+
+# stats df (Single Dragon) ====
+DragonStats1 <-
+  dragon %>%
+  group_by(home_team_api_id, season, league_id) %>% # if add "season" or "league_id" here, it affects the ggplot (and we probably want to)
+  summarise(sHTgoals = sum(home_team_goal), sATgoals = sum(away_team_goal), sHTwins = sum(HTwin),
+            sHTdraws = sum(HTdraw), sHTgdiff = sum(HTgoaldiff), sATgdiff = sum(ATgoaldiff),
+            mHTposs = mean(homePoss), mATposs = mean(awayPoss),
+            
+            sHTson = sum(HTshoton), sHTsof = sum(HTshotoff), sHTf = sum(HTfouls),
+            sHTcard = sum(HTcard), shtYc = sum(htYcard), shtRc = sum(htRcard),
+            sHTcross = sum(HTcross), sHTcorner = sum(HTcorners), sHTpoints = sum(HTpoints),
+            
+            sATson = sum(ATshoton), sATsof = sum(ATshotoff), sATf = sum(ATfouls),
+            sATcard = sum(ATcard), satYc = sum(atYcard), satRc = sum(atRcard),
+            sATcross = sum(ATcross), sATcorner = sum(ATcorners), sATpoints = sum(ATpoints),
+            maxStage = max(stage))
+
+# Now create bar chart of # of cards
+# we perhaps want to summarize by league_id and season in above DragonStats1 code for this?
+
+# HT cards vs HT goal differential. This one is a bit more interesting (then plotting against HT point)
+ggplot(DragonStats1, aes(sHTcard, sHTgdiff)) + geom_point() + geom_smooth()
+# AT cards vs AT goal differential. Even more of a negative slope. Interesting
+ggplot(DragonStats1, aes(sATcard, sATgdiff)) + geom_point() + geom_smooth()
+
+# interesting, bc lowest scoring teams don't get carded much, but if you remove teams with less than 10 points, then you have a negative trend
+# again - likely necessary to group_by league and season
+ggplot(subset(DragonStats1, maxStage %in% c(1:30))) + geom_point(aes(sHTcard, sHTgdiff))
+ggplot(subset(DragonStats1, league_id %in% c("1729", "4769", "10257", "19694", "21518"))) +
+  geom_point(aes(sHTcard, sHTgdiff)) + geom_smooth(aes(sHTcard, sHTgdiff))
+ggplot(subset(DragonStats1, league_id %in% c("1729", "4769", "10257", "19694", "21518"))) +
+  geom_point(aes(sATcard, sATgdiff)) + geom_smooth(aes(sHTcard, sHTgdiff))
 
 
-ANLinReg <- lm(outcome~homeORaway, data = matchAN4)
-summary(ANLinReg)
+# Create DoubleDragon stats df
+DoubleDragon1 <- dragon # this is the 1st df
+DoubleDragon2 <- dragon # bind this to the 1st df
 
-names(testALL)
+# change column names ====
+DoubleDragon1 %<>%
+  rename(team = home_team_api_id, opponent = away_team_api_id,
+         goals = home_team_goal, oppgoals = away_team_goal, poss = homePoss, oppPoss = awayPoss,
+         shotson = HTshoton, shotsoff = HTshotoff, fouls = HTfouls, cards = HTcard,
+         Ycards = htYcard, Rcards = htRcard, crosses = HTcross, corners = HTcorners,
+         oppShotson = ATshoton, oppShotsoff = ATshotoff, oppFouls = ATfouls, oppCards = ATcard,
+         oppYcards = atYcard, oppRcards = atRcard, oppCrosses = ATcross, oppCorners = ATcorners,
+         goalDiff = HTgoaldiff, wins = HTwin, draws = HTdraw, points = HTpoints,
+         oppGoalDiff = ATgoaldiff, oppPoints = ATpoints)
 
+DoubleDragon2 %<>%
+  rename(team = away_team_api_id, opponent = home_team_api_id,
+         goals = away_team_goal, oppgoals = home_team_goal, poss = awayPoss, oppPoss = homePoss,
+         shotson = ATshoton, shotsoff = ATshotoff, fouls = ATfouls, cards = ATcard,
+         Ycards = atYcard, Rcards = atRcard, crosses = ATcross, corners = ATcorners,
+         oppShotson = HTshoton, oppShotsoff = HTshotoff, oppFouls = HTfouls, oppCards = HTcard,
+         oppYcards = htYcard, oppRcards = htRcard, oppCrosses = HTcross, oppCorners = HTcorners,
+         goalDiff = ATgoaldiff, points = ATpoints,
+         oppGoalDiff = HTgoaldiff, oppPoints = HTpoints)
 
+# Add home (H) or away (A)identifier
+DoubleDragon1$home_or_away <- c('H') # perhaps make 1/0 or T/F later, but keep as is for easy identification
+DoubleDragon2$home_or_away <- c('A') # but we'll start with these two
 
+# now we need to bind mb2 columns to mb1 columns. to keep it clean, let's create mb3 <- mb1, and bind
+# to mb3
+
+# necessary?
+# DoubleDragon3 <- DoubleDragon1
+
+# now bind
+# rm(matchMB3) # why?
+DoubleDragon3 <- dplyr::bind_rows(DoubleDragon1, DoubleDragon2) # if doesn't work, run //DoubleDragon3 <- DoubleDragon1// first
+
+# add calculated fields: ====
+library(magrittr)
+DoubleDragon3 %<>%
+  mutate(win = ifelse(goals > oppgoals, 1, 0), loss = ifelse(goals < oppgoals, 1, 0),
+         draw = ifelse(goals == oppgoals, 1, 0), goal_dif = goals - oppgoals,
+         points = ifelse(goals > oppgoals, 3,
+                         ifelse(goals == oppgoals, 1, 0)))
+
+# League Key, in case we need it: ====
+leagueKEY <-
+  matchMB3 %>% 
+  select(team, league_id) %>% 
+  distinct()
+
+# stats df ====
+
+# stats for "doubled" data frame
+DDStats <-
+  DoubleDragon3 %>% 
+  group_by(team, season) %>% # removing season and league_id will affect the ggplots and analyses
+  summarise(sgoals = sum(goals), soppgoals = sum(oppgoals), avgposs = mean(poss), avgoppPoss = mean(oppPoss),
+            sshotson = sum(shotson), sshotsoff = sum(shotsoff),
+            sfouls = sum(fouls), scards = sum(cards), sYcards = sum(Ycards), sRcards = sum(Rcards),
+            scrosses = sum(crosses), scorners = sum(corners), spoints = sum(points),
+            
+            soppShotson = sum(oppShotson), soppShotsoff = sum(oppShotsoff),
+            soppFouls = sum(oppFouls), soppCards = sum(oppCards), soppYcards = sum(oppYcards), soppRcards = sum(oppRcards),
+            soppCrosses = sum(oppCrosses), soppCorners = sum(oppCorners), soppPoints = sum(oppPoints),
+            
+            swins = sum(win), sdraws = sum(draw), slosses = sum(loss), sgdiff = sum(goalDiff),
+            maxStage = ifelse(max(stage) < 31, 1,
+                              ifelse(max(stage) > 30 & max(stage) < 35, 2,
+                                     ifelse(max(stage) > 35 & max(stage) < 37, 3, 4))))
+
+# Shows Goal Differential vs points, colored by Season length (longer season, more games)
+# This shows that dispersion is pretty similar, though slightly more spread for a longer season
+# Better to use the stats6log or matchMB3 data ggplot for this
+ggplot(data = DDStats, aes(sgdiff, spoints, col = factor(maxStage))) + geom_point() +
+  labs(title = "Points vs Goal Differential") + theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Points") +
+  labs(colour = "Stage Reached")
+# likely REMOVE the above and use other data. however:
+
+# Continue with:
+# goaldif vs points for 1 team in 1 season
+# then overlap bar chart of: cards/fouls/possession/shotson/etc. (one by one)
+# and add trendlines thoughout to see what's interesting
+
+# without trendlines, English Premier League:
+ggplot(subset(DragonStats1, season %in% c("2015/2016") & league_id %in% ("1729"))) +
+  geom_point(aes(sHTgdiff, sHTpoints), colour="blue", size = 2) +
+  labs(title = "Goal Differential & Points, '15/16 Season") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Total Points") +
+  geom_bar(aes(x = sHTgdiff, y = sHTcard), stat = "identity", alpha = .5)
+
+# with trendlines, English Premier League:
+ggplot(subset(DragonStats1, season %in% c("2015/2016") & league_id %in% ("1729"))) +
+  geom_point(aes(sHTgdiff, sHTpoints), colour="blue", size = 2) +
+  labs(title = "Goal Differential & Points, '15/16 Season") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Total Points") +
+  geom_bar(aes(x = sHTgdiff, y = sHTcard), stat = "identity", alpha = .5) +
+  geom_smooth(aes(sHTgdiff, sHTpoints), se = FALSE) +
+  geom_smooth(aes(sHTgdiff, sHTcard), se = FALSE, col = "dark gray")
+
+# this chart shows:
+# 1. English Premier league is much more competitive (teams are closer to each other in skill than other leagues)
+# 2. As teams win more games, they get carded less (for home games)
+# 3. If refs get paid off, then Spain is the most corrupt league
+
+# create labeller:
+team_names <- c(
+  '1' = "Belgium",
+  '1729' = "England",
+  '4769' = "France",
+  '7809' = "Germany",
+  '10257' = "Italy",
+  '13274' = "Netherlands",
+  '15722' = "Poland",
+  '17642' = "Portugal",
+  '19694' = "Scotland",
+  '21518' = "Spain",
+  '24558' = "Switzerland"
+)
+
+# facet wrap each league:
+ggplot(subset(DragonStats1, season %in% c("2015/2016"))) +
+  geom_point(aes(sHTgdiff, sHTpoints), colour="blue", size = 2) +
+  labs(title = "Goal Differential & Points, '15/16 Season") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Total Points") +
+  geom_bar(aes(x = sHTgdiff, y = sHTcard), stat = "identity", alpha = .5) +
+  geom_smooth(aes(sHTgdiff, sHTpoints), se = FALSE, col = "blue") +
+  geom_smooth(aes(sHTgdiff, sHTcard), se = FALSE) +
+  facet_wrap(~league_id, ncol = 3, labeller = as_labeller(team_names))
+
+# compare to gdiff/points scatterplot from df that contains more data:
+# this is also a good plot, because it contains more data - it doesn't require the XML data (PERHAPS ADD LATER)
+
+# (first create df):
+stats6log <- matchMB3 %>% 
+  filter(real_stage == 1) %>%
+  group_by(team, league_id, season) %>% # strange - if i remove 'season' and run ggplot2 for all seasons, the charts look different
+  summarise(sgoals = sum(goals), soppgoals = sum(opponent_goals), swins = sum(win),
+            slosses = sum(loss), sdraws = sum(draw), sgdiff = sum(goal_dif),
+            spoints = sum(points))
+
+# left join leagueKEY to stats4lof to get league name column
+stats6log <- dplyr::left_join(stats6log, leagueKEY, by = "league_id")
+names(stats6log)
+
+# then the plot:
+ggplot(subset(stats6log, season %in% c("2015/2016"))) + geom_point(aes(sgdiff, spoints), colour="blue") +
+  labs(title = "Goal Differential & Points, '15/16 Season") + # plot title
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Total Points") +
+  facet_wrap(~country, ncol = 4)
