@@ -4,21 +4,6 @@ library(dplyr)
 library(XML) # need this for xmlToList
 library(magrittr) # need this for %<>%
 library(ggplot2)
-install.packages("ggdendro")
-library(ggdendro)
-
-# Data Category DF for dendrogram ====
-# create vector
-varname <- c((names(match)))
-# change vector to df
-dendro <- data.frame(varname)
-# Create second field - category of variable
-dendro$category[1:12] <- "Base Data"
-dendro$category[12:78] <- "Player Data"
-dendro$category[79:86] <- "XML Data"
-dendro$category[88:116] <- "Betting House Data"
-
-# continue later with this
 
 ###########################################################################################
 ##################### DF 1: HIGHEST LEVEL SUMMARY STATS: no XML data ###################### ====
@@ -73,11 +58,8 @@ ggplot(data = statsMB3, aes(sgdiff, spoints, col = factor(maxStage))) + geom_poi
 
 
 ###########################################################################################
-################################ VARIABLES FOR ALL SEASONS ################################ ====
+############################# DF 2+: ALL VARIABLES & XML data ############################# ====
 ###########################################################################################
-
-# testALL variable
-# names(match)
 
 # Create OG data frame and XML data ====
 # include only desired variables
@@ -89,11 +71,11 @@ matchALL <- match %>%
 # create test df ====
 testALL <- matchALL
 
-# remove rows that don't have data (consider imputation later) ====
+# remove rows that don't have data or have incomplete data ====
 testALL <- testALL[complete.cases(testALL$possession),] # removes all rows in matchAD1$possession with NA - size: 25979 rows to 14217 rows
 testALL <- testALL[!(testALL$possession == "<possession />"),] # remove rows where test$possession contains only "<possession />" - size: 14217 rows to 8419 rows
-testALL <- testALL[!(testALL$card == "<card />"),] # remove rows where test$possession contains only "<possession />" - # size: from 8419 to 8125 
-testALL <- testALL[!(testALL$corner == "<corner />"),] # remove rows where test$corner contains only "<corner />"
+testALL <- testALL[!(testALL$card == "<card />"),] # remove rows where test$card contains only "<possession />" - # size: from 8419 to 8125 
+testALL <- testALL[!(testALL$corner == "<corner />"),] # remove rows where test$corner contains only "<corner />" # size: from 8125 to 8124
 
 # Extract necessary data from nested XML data:
 # 1. replace incorrect variables with proper ones
@@ -154,7 +136,7 @@ testALL$awayPoss <- 100 - testALL$homePoss
 
 # next -
 # (1) inspect other xml cells
-# (2) create for loop for other xml cells
+# (2) create for loop for other xml cells to extract desired data
 
 # number of shots on goal - both teams summed (SKIP?) ====
 # for (i in 1:length(testALL$shoton)){
@@ -207,7 +189,7 @@ for (i in 1: length(testALL$shotoff)){
 #   testALL$nfoulcommit[i] <- nrow(do.call(rbind, xmlToList(as.character(testALL$foulcommit[i]))))
 # }
 
-# number of fouls - home team against away team # ( < 1 hr 30 minutes) - works!- YES
+# number of fouls - home team against away team # ( < 1 hr 30 minutes)
 for (i in 1: length(testALL$foulcommit)){
   temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$foulcommit[i]))))
   if('player1' %in% colnames(temp)) {
@@ -222,7 +204,7 @@ for (i in 1: length(testALL$foulcommit)){
                             n == testALL$home_team_api_id[i])}
   testALL$HTfouls[i] <- nrow(temp)}
 
-# number of fouls - away team against home team # ( < 1 hr 30 minutes) - works!- YES
+# number of fouls - away team against home team # ( < 1 hr 30 minutes)
 for (i in 1: length(testALL$foulcommit)){
   temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$foulcommit[i]))))
   if('player1' %in% colnames(temp)) {
@@ -299,16 +281,7 @@ for (i in 1: length(testALL$card)){
 #   testALL$ncross[i] <- nrow(do.call(rbind, xmlToList(as.character(testALL$cross[i]))))
 # }
 
-# number of crosses performed by home team ==== ("Error: player 1 not found") # ( < 1 hr 13 min)
-for (i in 1:length(testALL$cross)){
-  testALL$HTcross[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$cross[i])))) %>% 
-                               filter(player1 == testALL$home_team_api_id[i] |
-                                        sortorder == testALL$home_team_api_id[i] |
-                                        team == testALL$home_team_api_id[i] |
-                                        n == testALL$home_team_api_id[i]))
-}
-
-# david version - YES
+# number of crosses performed by home team ==== 
 for (i in 1: length(testALL$cross)){
   temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$cross[i]))))
   if('player1' %in% colnames(temp)) {
@@ -323,10 +296,7 @@ for (i in 1: length(testALL$cross)){
                             n == testALL$home_team_api_id[i])}
   testALL$HTcross[i] <- nrow(temp)}
 
-testALL$HTcross[5001:6000] # 5076
-tail(testALL$HTcross, n = 1000)
-
-# number of crosses performed by away team ==== # david version - YES ====
+# number of crosses performed by away team ==== 
 for (i in 1: length(testALL$cross)){
   temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$cross[i]))))
   if('player1' %in% colnames(temp)) {
@@ -341,23 +311,12 @@ for (i in 1: length(testALL$cross)){
                             n == testALL$away_team_api_id[i])}
   testALL$ATcross[i] <- nrow(temp)}
 
-testALL$ATcross[5001:6000] # 5076
-tail(testALL$ATcross, n = 1000)
 # number of corners, both teams summed (SKIP?) ==== 
 # for (i in 1:length(testALL$corner)){
 #   testALL$ncorner[i] <- nrow(do.call(rbind, xmlToList(as.character(testALL$corner[i]))))
 # }
 
-# number of corners performed by home team ==== ("Error: player 1 not found") (~ 8 minutes to come to the error)
-for (i in 1:length(testALL$corner)){
-  testALL$HTcorners[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$corner[i])))) %>% 
-                                 filter(player1 == testALL$home_team_api_id[i] |
-                                          sortorder == testALL$home_team_api_id[i] |
-                                          team == testALL$home_team_api_id[i] |
-                                          n == testALL$home_team_api_id[i]))
-}
-
-# david version - YES!
+# number of corners performed by home team ==== (~ 45 minutes)
 for (i in 1: length(testALL$corner)){
   temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$corner[i]))))
   if('player1' %in% colnames(temp)) {
@@ -373,16 +332,8 @@ for (i in 1: length(testALL$corner)){
   testALL$HTcorners[i] <- nrow(temp)}
 
 tail(testALL$HTcorners, n = 1000)
-# number of corners performed by away team ==== (Error: second argument must be a list)
-for (i in 1:length(testALL$corner)){
-  testALL$ATcorners[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$corner[i])))) %>% 
-                                 filter(player1 == testALL$away_team_api_id[i] |
-                                          sortorder == testALL$away_team_api_id[i] |
-                                          team == testALL$away_team_api_id[i] |
-                                          n == testALL$away_team_api_id[i]))
-}
 
-# david version - YES?
+# number of corners performed by away team ==== (~ 45 minutes?)
 for (i in 1: length(testALL$corner)){
   temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$corner[i]))))
   if('player1' %in% colnames(temp)) {
@@ -396,17 +347,6 @@ for (i in 1: length(testALL$corner)){
                             team == testALL$away_team_api_id[i] |
                             n == testALL$away_team_api_id[i])}
   testALL$ATcorners[i] <- nrow(temp)}
-
-testALL$ATcorners
-
-(do.call(rbind, xmlToList(as.character(testALL$corner[827]))))
-(do.call(rbind, xmlToList(as.character(testALL$corner[828]))))
-
-head(testALL$corner, n = 200)
-## I let this run overnight. It was running for 10 hours when I left for work. My guess is it took about 12 hours
-## Skipping certain above variables should make it faster. If needed for later analysis,
-## then use basic arithmetic to re-create variables.
-
 
 # goal differential ====
 testALL$HTgoaldiff <- testALL$home_team_goal - testALL$away_team_goal # for home team
@@ -429,6 +369,10 @@ testALL %<>%
   mutate(ATpoints = ifelse(HTwin == 1, 0,
                            ifelse(HTdraw == 1, 1, 3)))
 
+# cards total variable
+testALL$HTcard <- testALL$htRcard + testALL$htYcard
+testALL$ATcard <- testALL$atRcard + testALL$atYcard
+rm(dragon, DragonStats1, DoubleDragon1, DoubleDragon2, DoubleDragon3)
 
 # dragon removes the nested XML data that we no longer need
 dragon <- testALL %>% 
@@ -440,7 +384,27 @@ dragon <- testALL %>%
          HTgoaldiff, HTwin, HTdraw, HTpoints,
          ATgoaldiff, ATpoints)
 
-# stats df (Single Dragon) ====
+# Use dragon to get basic summary information
+
+# No. of matches
+nrow(dragon)
+
+# Sum variables for home and away teams
+dragon %>% 
+  select(htYcard, htRcard, home_team_goal, away_team_goal,
+         HTshoton, HTshotoff, HTfouls, HTcard, htYcard, htRcard, HTcross, HTcorners,
+         ATshoton, ATshotoff, ATfouls, ATcard, atYcard, atRcard, ATcross, ATcorners,
+         HTgoaldiff, HTwin, HTdraw, HTpoints,
+         ATgoaldiff, ATpoints) %>% 
+  summarise_each(funs(sum))
+names(dragon)
+
+# mean of possession time for home and away teams
+dragon %>%
+  summarise(mean(homePoss, na.rm = TRUE),
+            mean(awayPoss, na.rm = TRUE))
+
+# summary stats df (Single Dragon) ====
 DragonStats1 <-
   dragon %>%
   group_by(home_team_api_id, season, league_id) %>% # if add "season" or "league_id" here, it affects the ggplot (and we probably want to)
@@ -457,7 +421,11 @@ DragonStats1 <-
             sATcross = sum(ATcross), sATcorner = sum(ATcorners), sATpoints = sum(ATpoints),
             maxStage = max(stage))
 
-# Now create bar chart of # of cards
+# Now create bar chart of # of cards (RETURN? REMOVE?)
+# ggplot(DragonStats1, aes(sHTcard)) + geom_bar()
+# ggplot(subset(DragonStats1, league_id %in% c("1729"), season %in% c("2014/2015"))) +
+#   geom_bar(aes(DragonStats1$sHTcard))
+
 # we perhaps want to summarize by league_id and season in above DragonStats1 code for this?
 
 # HT cards vs HT goal differential. This one is a bit more interesting (then plotting against HT point)
@@ -472,7 +440,6 @@ ggplot(subset(DragonStats1, league_id %in% c("1729", "4769", "10257", "19694", "
   geom_point(aes(sHTcard, sHTgdiff)) + geom_smooth(aes(sHTcard, sHTgdiff))
 ggplot(subset(DragonStats1, league_id %in% c("1729", "4769", "10257", "19694", "21518"))) +
   geom_point(aes(sATcard, sATgdiff)) + geom_smooth(aes(sHTcard, sHTgdiff))
-
 
 # Create DoubleDragon stats df
 DoubleDragon1 <- dragon # this is the 1st df
@@ -512,27 +479,49 @@ DoubleDragon2$home_or_away <- c('A') # but we'll start with these two
 # now bind
 # rm(matchMB3) # why?
 DoubleDragon3 <- dplyr::bind_rows(DoubleDragon1, DoubleDragon2) # if doesn't work, run //DoubleDragon3 <- DoubleDragon1// first
+DoubleDragon3$HTwin <- NULL
+DoubleDragon3$HTdraw <- NULL
 
 # add calculated fields: ====
-library(magrittr)
 DoubleDragon3 %<>%
-  mutate(win = ifelse(goals > oppgoals, 1, 0), loss = ifelse(goals < oppgoals, 1, 0),
-         draw = ifelse(goals == oppgoals, 1, 0), goal_dif = goals - oppgoals,
+  mutate(wins = ifelse(goals > oppgoals, 1, 0), losses = ifelse(goals < oppgoals, 1, 0),
+         draws = ifelse(goals == oppgoals, 1, 0), goalDiff = goals - oppgoals,
          points = ifelse(goals > oppgoals, 3,
                          ifelse(goals == oppgoals, 1, 0)))
 
-# League Key, in case we need it: ====
-leagueKEY <-
-  matchMB3 %>% 
-  select(team, league_id) %>% 
-  distinct()
+# Use DoubleDragon3 to find summary stats grouped by wins, losses, and draws
+
+names(DoubleDragon3)
+# oppgoals, poss, shotson, shotsoff,
+# oppShotson, oppShotsoff, oppFouls, oppYcards, oppRcards, oppCrosses, oppCorners, 
+
+# summary stats by wins
+DoubleDragon3 %>% 
+  filter(wins == 1) %>% 
+  select(Ycards, Rcards, fouls, goals, crosses, corners, goalDiff) %>%
+  summarise_each(funs(sum))
+
+# summary stats by draws
+DoubleDragon3 %>% 
+  filter(draws == 1) %>%
+  select(Ycards, Rcards, fouls, goals, crosses, corners, goalDiff) %>%
+  summarise_each(funs(sum))
+
+# summary stats by losses
+DoubleDragon3 %>% 
+  filter(losses == 1) %>% 
+  select(Ycards, Rcards, fouls, goals, crosses, corners, goalDiff) %>%
+  summarise_each(funs(sum))
+
+#check work:
+sum(DoubleDragon3$Rcards)
 
 # stats df ====
 
 # stats for "doubled" data frame
 DDStats <-
   DoubleDragon3 %>% 
-  group_by(team, season) %>% # removing season and league_id will affect the ggplots and analyses
+  group_by(team, season, league_id) %>% # removing season and league_id will affect the ggplots and analyses
   summarise(sgoals = sum(goals), soppgoals = sum(oppgoals), avgposs = mean(poss), avgoppPoss = mean(oppPoss),
             sshotson = sum(shotson), sshotsoff = sum(shotsoff),
             sfouls = sum(fouls), scards = sum(cards), sYcards = sum(Ycards), sRcards = sum(Rcards),
@@ -542,18 +531,19 @@ DDStats <-
             soppFouls = sum(oppFouls), soppCards = sum(oppCards), soppYcards = sum(oppYcards), soppRcards = sum(oppRcards),
             soppCrosses = sum(oppCrosses), soppCorners = sum(oppCorners), soppPoints = sum(oppPoints),
             
-            swins = sum(win), sdraws = sum(draw), slosses = sum(loss), sgdiff = sum(goalDiff),
-            maxStage = ifelse(max(stage) < 31, 1,
-                              ifelse(max(stage) > 30 & max(stage) < 35, 2,
-                                     ifelse(max(stage) > 35 & max(stage) < 37, 3, 4))))
+            swins = sum(wins), sdraws = sum(draws), slosses = sum(losses), sgdiff = sum(goalDiff),
+            maxStage = ifelse(max(stage) < 31, 30,
+                              ifelse(max(stage) > 30 & max(stage) < 35, 34,
+                                     ifelse(max(stage) > 35 & max(stage) < 37, 36, 38))))
 
-# Shows Goal Differential vs points, colored by Season length (longer season, more games)
-# This shows that dispersion is pretty similar, though slightly more spread for a longer season
+
+# REMOVE: Shows Goal Differential vs points, colored by Season length (longer season, more games)
 # Better to use the stats6log or matchMB3 data ggplot for this
+# (this one just has less data)
 ggplot(data = DDStats, aes(sgdiff, spoints, col = factor(maxStage))) + geom_point() +
   labs(title = "Points vs Goal Differential") + theme(plot.title = element_text(hjust = 0.5)) +
   labs(x = "Goal Differential", y = "Points") +
-  labs(colour = "Stage Reached")
+  labs(colour = "# of Matches")
 # likely REMOVE the above and use other data. however:
 
 # Continue with:
@@ -561,25 +551,113 @@ ggplot(data = DDStats, aes(sgdiff, spoints, col = factor(maxStage))) + geom_poin
 # then overlap bar chart of: cards/fouls/possession/shotson/etc. (one by one)
 # and add trendlines thoughout to see what's interesting
 
-# without trendlines, English Premier League:
+# 4 plots - goalDiff vs Cards (as HOME team) - DragonStats1 ====
+
+# (1) scatterplot only - goal dif vs points, English Premier League:
+ggplot(subset(DragonStats1, season %in% c("2015/2016") & league_id %in% ("1729"))) +
+  geom_point(aes(sHTgdiff, sHTpoints), colour="blue", size = 2) +
+  labs(title = "Goal Differential & Points, '15/16 Season") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Total Points")
+
+# (2) with trendline
 ggplot(subset(DragonStats1, season %in% c("2015/2016") & league_id %in% ("1729"))) +
   geom_point(aes(sHTgdiff, sHTpoints), colour="blue", size = 2) +
   labs(title = "Goal Differential & Points, '15/16 Season") +
   theme(plot.title = element_text(hjust = 0.5)) +
   labs(x = "Goal Differential", y = "Total Points") +
-  geom_bar(aes(x = sHTgdiff, y = sHTcard), stat = "identity", alpha = .5)
+  geom_smooth(aes(sHTgdiff, sHTpoints))
 
-# with trendlines, English Premier League:
+# (3) without trendlines, English Premier League:
 ggplot(subset(DragonStats1, season %in% c("2015/2016") & league_id %in% ("1729"))) +
   geom_point(aes(sHTgdiff, sHTpoints), colour="blue", size = 2) +
+  labs(title = "Number of Cards Received") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Team", y = "Total Cards") +
+  geom_bar(aes(x = sHTgdiff, y = sHTcard), position = "dodge", stat = "identity", alpha = .5)
+
+# (4) with trendlines, English Premier League:
+ggplot(subset(DragonStats1, season %in% c("2015/2016") & league_id %in% ("1729"))) +
+  geom_point(aes(sHTgdiff, sHTpoints), colour="blue", size = 2) +
+  labs(title = "Number of Cards Received") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Team", y = "Total Cards") +
+  geom_bar(aes(x = sHTgdiff, y = sHTcard), position = "dodge", stat = "identity", alpha = .5) +
+  geom_smooth(aes(sHTgdiff, sHTpoints)) +
+  geom_smooth(aes(sHTgdiff, sHTcard), se = FALSE, col = "dark grey")
+
+# 4 plots - goalDiff vs Cards (as AWAY team) - DragonStats1 ====
+
+# (1) scatterplot only - goal dif vs points, English Premier League:
+ggplot(subset(DragonStats1, season %in% c("2015/2016") & league_id %in% ("1729"))) +
+  geom_point(aes(sATgdiff, sATpoints), colour="blue", size = 2) +
+  labs(title = "Goal Differential & Points, '15/16 Season") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Total Points")
+
+# (2) with trendline
+ggplot(subset(DragonStats1, season %in% c("2015/2016") & league_id %in% ("1729"))) +
+  geom_point(aes(sATgdiff, sATpoints), colour="blue", size = 2) +
   labs(title = "Goal Differential & Points, '15/16 Season") +
   theme(plot.title = element_text(hjust = 0.5)) +
   labs(x = "Goal Differential", y = "Total Points") +
-  geom_bar(aes(x = sHTgdiff, y = sHTcard), stat = "identity", alpha = .5) +
-  geom_smooth(aes(sHTgdiff, sHTpoints), se = FALSE) +
-  geom_smooth(aes(sHTgdiff, sHTcard), se = FALSE, col = "dark gray")
+  geom_smooth(aes(sATgdiff, sATpoints))
 
-# this chart shows:
+# (3) without trendlines, English Premier League:
+ggplot(subset(DragonStats1, season %in% c("2015/2016") & league_id %in% ("1729"))) +
+  geom_point(aes(sATgdiff, sATpoints), colour="blue", size = 2) +
+  labs(title = "Number of Cards Received") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Team", y = "Total Cards") +
+  geom_bar(aes(x = sATgdiff, y = sATcard), position = "dodge", stat = "identity", alpha = .5)
+
+# (4) with trendlines, English Premier League:
+ggplot(subset(DragonStats1, season %in% c("2015/2016") & league_id %in% ("1729"))) +
+  geom_point(aes(sATgdiff, sATpoints), colour="blue", size = 2) +
+  labs(title = "Number of Cards Received") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Team", y = "Total Cards") +
+  geom_bar(aes(x = sATgdiff, y = sATcard), position = "dodge", stat = "identity", alpha = .5) +
+  geom_smooth(aes(sATgdiff, sATpoints)) +
+  geom_smooth(aes(sATgdiff, sATcard), se = FALSE, col = "dark gray")
+
+# 4 plots - goalDiff vs Cards (BOTH home & away games) - DDStats ====
+
+# (1) scatterplot only - goal dif vs points, English Premier League:
+ggplot(subset(DDStats, season %in% c("2015/2016") & league_id %in% ("1729"))) +
+  geom_point(aes(sgdiff, spoints), colour="blue", size = 2) +
+  labs(title = "Goal Differential & Points, '15/16 Season") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Total Points")
+
+# (2) with trendline
+ggplot(subset(DDStats, season %in% c("2015/2016") & league_id %in% ("1729"))) +
+  geom_point(aes(sgdiff, spoints), colour="blue", size = 2) +
+  labs(title = "Goal Differential & Points, '15/16 Season") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Total Points") +
+  geom_smooth(aes(sgdiff, spoints))
+
+# (3) without trendlines, English Premier League:
+ggplot(subset(DDStats, season %in% c("2015/2016") & league_id %in% ("1729"))) +
+  geom_point(aes(sgdiff, spoints), colour="blue", size = 2) +
+  labs(title = "Number of Cards Received") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Team", y = "Total Cards") +
+  geom_bar(aes(x = sgdiff, y = scards), position = "dodge", stat = "identity", alpha = .5)
+
+# (4) with trendlines, English Premier League:
+ggplot(subset(DDStats, season %in% c("2015/2016") & league_id %in% ("1729"))) +
+  geom_point(aes(sgdiff, spoints), colour="blue", size = 2) +
+  labs(title = "Number of Cards Received") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Team", y = "Total Cards") +
+  geom_bar(aes(x = sgdiff, y = scards), position = "dodge", stat = "identity", alpha = .5) +
+  geom_smooth(aes(sgdiff, spoints)) +
+  geom_smooth(aes(sgdiff, scards), se = FALSE, col = "dark gray")
+
+
+# this chart shows: ====
 # 1. English Premier league is much more competitive (teams are closer to each other in skill than other leagues)
 # 2. As teams win more games, they get carded less (for home games)
 # 3. If refs get paid off, then Spain is the most corrupt league
@@ -599,35 +677,217 @@ team_names <- c(
   '24558' = "Switzerland"
 )
 
-# facet wrap each league:
-ggplot(subset(DragonStats1, season %in% c("2015/2016"))) +
-  geom_point(aes(sHTgdiff, sHTpoints), colour="blue", size = 2) +
+# facet wrap by league (BOTH away and home games) ====
+# 15/16 season
+ggplot(subset(DDStats, season %in% c("2015/2016"))) +
+  geom_point(aes(sgdiff, spoints), colour="blue", size = 2) +
   labs(title = "Goal Differential & Points, '15/16 Season") +
   theme(plot.title = element_text(hjust = 0.5)) +
   labs(x = "Goal Differential", y = "Total Points") +
-  geom_bar(aes(x = sHTgdiff, y = sHTcard), stat = "identity", alpha = .5) +
-  geom_smooth(aes(sHTgdiff, sHTpoints), se = FALSE, col = "blue") +
-  geom_smooth(aes(sHTgdiff, sHTcard), se = FALSE) +
+  geom_bar(aes(x = sgdiff, y = scards), position = "dodge", stat = "identity", alpha = .5) +
+  geom_smooth(aes(sgdiff, spoints), se = FALSE, col = "blue") +
+  geom_smooth(aes(sgdiff, scards), se = FALSE) +
   facet_wrap(~league_id, ncol = 3, labeller = as_labeller(team_names))
+
+# 14/15 season
+ggplot(subset(DDStats, season %in% c("2014/2015"))) +
+  geom_point(aes(sgdiff, spoints), colour="blue", size = 2) +
+  labs(title = "Goal Differential & Points, '14/15 Season") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Total Points") +
+  geom_bar(aes(x = sgdiff, y = scards), position = "dodge", stat = "identity", alpha = .5) +
+  geom_smooth(aes(sgdiff, spoints), se = FALSE, col = "blue") +
+  geom_smooth(aes(sgdiff, scards), se = FALSE) +
+  facet_wrap(~league_id, ncol = 3, labeller = as_labeller(team_names))
+
+# other variables
+# first - order from least to most winning teams
+# Teams with fewest points on the left, and teams with the most points on the right.
+# these were also scatter plots. Instead of plotting a y and x axis, we ordered
+# the data by number of points, and "plotted" the variable against its order of winningest team
+
+DDStatsSort <- DDStatsSort[!(DDStatsSort$team == "208931"),]
+DDStatsSort <- DDStats %>% arrange(spoints)
+DDStatsSort %<>% arrange(spoints)
+DDStatsSort$rowID <- seq.int(nrow(DDStatsSort))
+
+
+# (1) other factors: corners
+
+# scatter version
+ggplot(DDStatsSort, aes(rowID, scorners)) +
+  geom_point() +
+  labs(title = "Corner Kicks ordered by Teams' Points") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "<-- Least Winning [Team] Most Winning -->", y = "Number of Corner Kicks")
+
+s1 <- ggplot(DDStatsSort, aes(rowID, scorners)) +
+  geom_point(alpha = .2) +
+  labs(title = "Corner Kicks") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "", y = "")
+
+# bar version
+ggplot(subset(DDStatsSort, season %in% c("2015/2016"))) +
+  geom_point(aes(sgdiff, spoints), colour="blue", size = 2) +
+  labs(title = "Goal Differential & Points, '14/15 Season") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Total Points") +
+  geom_bar(aes(x = sgdiff, y = scorners), position = "dodge", stat = "identity", alpha = .5) +
+  geom_smooth(aes(sgdiff, scorners), se = FALSE)
+
+# (2) other factors: shots on goal - both teams
+
+# scatter version
+ggplot(DDStatsSort, aes(rowID, sshotson)) +
+  geom_point() +
+  labs(title = "Shots on Goal ordered by Teams' Points") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "<-- Least Winning [Team] Most Winning -->", y = "Number of Shots on Goal")
+
+s2 <- ggplot(DDStatsSort, aes(rowID, sshotson)) +
+  geom_point(alpha = .2) +
+  labs(title = "Shots On") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "", y = "")
+
+# bar version
+ggplot(subset(DDStatsSort, season %in% c("2015/2016"))) +
+  geom_point(aes(sgdiff, spoints), colour="blue", size = 2) +
+  labs(title = "Goal Differential & Points, '14/15 Season") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Total Points") +
+  geom_bar(aes(x = sgdiff, y = sshotson), position = "dodge", stat = "identity", alpha = .5) +
+  geom_smooth(aes(sgdiff, sshotson), se = FALSE)
+
+# (3) other factors: shots off goal - both teams
+
+# scatter version
+ggplot(DDStatsSort, aes(rowID, sshotsoff)) +
+  geom_point() +
+  labs(title = "Shots Off Goal ordered by Teams' Points") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "<-- Least Winning [Team] Most Winning -->", y = "Number of Shots Off Goal")
+
+s3 <- ggplot(DDStatsSort, aes(rowID, sshotsoff)) +
+  geom_point(alpha = .2) +
+  labs(title = "Shots Off") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "", y = "")
+
+
+# bar version
+ggplot(subset(DDStatsSort, season %in% c("2015/2016"))) +
+  geom_point(aes(sgdiff, spoints), colour="blue", size = 2) +
+  labs(title = "Goal Differential & Points, '14/15 Season") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Total Points") +
+  geom_bar(aes(x = sgdiff, y = sshotsoff), position = "dodge", stat = "identity", alpha = .5) +
+  geom_smooth(aes(sgdiff, sshotsoff), se = FALSE)
+
+# (4) other factors: possession
+# (interesting- teams that won more had less possession)
+
+# scatter version
+ggplot(DDStatsSort, aes(rowID, avgposs)) +
+  geom_point() +
+  labs(title = "Ball Possession Time ordered by Teams' Points") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "<-- Least Winning [Team] Most Winning -->", y = "Ball Possession by % of Match")
+
+s4 <- ggplot(DDStatsSort, aes(rowID, avgposs)) +
+  geom_point(alpha = .2) +
+  labs(title = "Possession") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "", y = "")
+
+# bar version
+ggplot(subset(DDStatsSort, season %in% c("2015/2016"))) +
+  geom_point(aes(sgdiff, spoints), colour="blue", size = 2) +
+  labs(title = "Goal Differential & Points, '14/15 Season") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Total Points") +
+  geom_bar(aes(x = sgdiff, y = avgposs), position = "dodge", stat = "identity", alpha = .5) +
+  geom_smooth(aes(sgdiff, avgposs), se = FALSE, color = "dark grey")
+
+# (5) other factors:  fouls
+# fewer fouls a team commits - greater likelihood of a win
+
+# scatter version
+ggplot(DDStatsSort, aes(rowID, sfouls)) +
+  geom_point() +
+  labs(title = "Number of Fouls ordered by Teams' Points") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "<-- Least Winning [Team] Most Winning -->", y = "Number of Season Fouls")
+
+s5 <- ggplot(DDStatsSort, aes(rowID, sfouls)) +
+  geom_point(alpha = .2) +
+  labs(title = "Fouls") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "", y = "")
+
+# bar version
+ggplot(subset(DDStatsSort, season %in% c("2015/2016"))) +
+  geom_point(aes(sgdiff, spoints), colour="blue", size = 2) +
+  labs(title = "Goal Differential & Points, '14/15 Season") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Total Points") +
+  geom_bar(aes(x = sgdiff, y = sfouls/5), position = "dodge", stat = "identity", alpha = .5) +
+  geom_smooth(aes(sgdiff, sfouls/5), se = FALSE, color = "dark grey")
+
+
+# (6) other factors: crosses - both teams
+
+# scatter version
+ggplot(DDStatsSort, aes(rowID, scrosses)) +
+  geom_point() +
+  labs(title = "Crosses Ordered by Teams' Points") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "<-- Least Winning [Team] Most Winning -->", y = "Number of Crosses")
+
+s6 <- ggplot(DDStatsSort, aes(rowID, scrosses)) +
+  geom_point(alpha = .2) +
+  labs(title = "Crosses") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "", y = "")
+
+# bar version
+ggplot(subset(DDStatsSort, season %in% c("2015/2016"))) +
+  geom_point(aes(sgdiff, spoints), colour="blue", size = 2) +
+  labs(title = "Goal Differential & Points, '14/15 Season") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "Goal Differential", y = "Total Points") +
+  geom_bar(aes(x = sgdiff, y = scrosses), position = "dodge", stat = "identity", alpha = .5) +
+  geom_smooth(aes(sgdiff, scrosses), se = FALSE)
+
+source("http://peterhaschke.com/Code/multiplot.R")
+multiplot(s1, s2, s3, s4, s5, s6, cols = 3)
+
 
 # compare to gdiff/points scatterplot from df that contains more data:
 # this is also a good plot, because it contains more data - it doesn't require the XML data (PERHAPS ADD LATER)
-
+names(matchMB3)
 # (first create df):
 stats6log <- matchMB3 %>% 
-  filter(real_stage == 1) %>%
+  filter(stage < 30) %>%
   group_by(team, league_id, season) %>% # strange - if i remove 'season' and run ggplot2 for all seasons, the charts look different
   summarise(sgoals = sum(goals), soppgoals = sum(opponent_goals), swins = sum(win),
             slosses = sum(loss), sdraws = sum(draw), sgdiff = sum(goal_dif),
             spoints = sum(points))
 
-# left join leagueKEY to stats4lof to get league name column
-stats6log <- dplyr::left_join(stats6log, leagueKEY, by = "league_id")
-names(stats6log)
+# League Key: ====
+leagueKEY <-
+  matchMB3 %>% 
+  select(team, league_id) %>% 
+  distinct()
 
-# then the plot:
+# left join leagueKEY to stats6log to get league name column
+stats6log <- dplyr::left_join(stats6log, leagueKEY, by = "league_id")
+
+# then the plot: (season 15/16 - can also do for other seasons)
 ggplot(subset(stats6log, season %in% c("2015/2016"))) + geom_point(aes(sgdiff, spoints), colour="blue") +
   labs(title = "Goal Differential & Points, '15/16 Season") + # plot title
   theme(plot.title = element_text(hjust = 0.5)) +
   labs(x = "Goal Differential", y = "Total Points") +
-  facet_wrap(~country, ncol = 4)
+  facet_wrap(~league_id, ncol = 4, labeller = as_labeller(team_names))
+
