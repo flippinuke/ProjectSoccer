@@ -498,23 +498,57 @@ names(DoubleDragon3)
 # summary stats by wins
 DoubleDragon3 %>% 
   filter(wins == 1) %>% 
-  select(Ycards, Rcards, fouls, goals, crosses, corners, goalDiff) %>%
+  select(Ycards, Rcards, fouls, goals, crosses, corners, shotson, shotsoff) %>%
   summarise_each(funs(sum))
 
 # summary stats by draws
 DoubleDragon3 %>% 
   filter(draws == 1) %>%
-  select(Ycards, Rcards, fouls, goals, crosses, corners, goalDiff) %>%
+  select(Ycards, Rcards, fouls, goals, crosses, corners, shotson, shotsoff) %>%
   summarise_each(funs(sum))
 
 # summary stats by losses
 DoubleDragon3 %>% 
   filter(losses == 1) %>% 
-  select(Ycards, Rcards, fouls, goals, crosses, corners, goalDiff) %>%
+  select(Ycards, Rcards, fouls, goals, crosses, corners, shotson, shotsoff) %>%
   summarise_each(funs(sum))
 
 #check work:
 sum(DoubleDragon3$Rcards)
+
+# number of matches that were won by 1 goal
+DoubleDragon3 %>% 
+  filter(goalDiff == 1) %>% 
+  nrow()
+
+# number of red cards in matches that were won by 1 goal
+DoubleDragon3 %>% 
+  filter(abs(goalDiff) == 1) %>% 
+  select(Rcards) %>% 
+  summarise_each(funs(sum))
+
+DoubleDragon3 %>% 
+  filter(goalDiff == -1) %>% 
+  select(Rcards) %>% 
+  summarise_each(funs(sum))
+
+
+# number of red cards in matches that were won
+DoubleDragon3 %>% 
+  filter(abs(goalDiff) > 0) %>% 
+  select(Rcards) %>% 
+  summarise_each(funs(sum))
+
+DoubleDragon3 %>% 
+  filter(goalDiff < 0) %>% 
+  select(Rcards) %>% 
+  summarise_each(funs(sum))
+
+
+
+sum(DoubleDragon3$Rcards)
+
+
 
 # stats df ====
 
@@ -891,3 +925,95 @@ ggplot(subset(stats6log, season %in% c("2015/2016"))) + geom_point(aes(sgdiff, s
   labs(x = "Goal Differential", y = "Total Points") +
   facet_wrap(~league_id, ncol = 4, labeller = as_labeller(team_names))
 
+# regressions:
+
+# first check for multicollinearity:
+dragon_numeric <- dragon[, sapply(dragon, is.numeric)]
+cor(dragon_numeric)
+# none found. the only highly correlated variables are "goals," "points," and "goal differential."
+# this makes sense, since they are based on each other. fortunately, the regression
+# only uses goal differential.
+
+# somewhat correlated variables include ones like "home team corner kick" and "home team
+# shots on goal." It does not approach a level of concern, but the correlation makes sense,
+# as corner kicks very frequently lead to a shot on goal.
+
+# using dragon ====
+
+# find seasons
+unique(dragon$season)
+
+# number of observations per season
+table(dragon$season)
+
+# create training set use all data up to season 2014/2015
+dtrain <- dragon[!(dragon$season == "2015/2016"),]
+# create testing set
+dtest <- dragon[(dragon$season == "2015/2016"),]
+# check work
+nrow(dtrain)
+nrow(dtest)
+
+# dmodels 1 & 2 - dragon data set ====
+
+# model1 - regress HTgoaldiff against all variables - R2 = .1351
+dmodel1 <- lm(HTgoaldiff ~ homePoss + HTshoton + HTshotoff + HTcross + HTcorners +
+                ATshoton + ATshotoff + ATcross + ATcorners + 
+                HTfouls + htYcard + htRcard + ATfouls + atYcard + atRcard,
+              data = dtrain)
+summary(dmodel1)
+
+# model2 - without ATfouls & HTshotoff- R2 = .1353
+dmodel2 <- lm(HTgoaldiff ~ homePoss + HTshoton + HTcross + HTcorners +
+                ATshoton + ATshotoff + ATcross + ATcorners + 
+                HTfouls + htYcard + htRcard + atYcard + atRcard,
+              data = dtrain)
+summary(dmodel2)
+
+
+# now used dtest (test data set)
+str(dtest)
+predictTest = predict(dmodel2, newdata = dtest)
+predictTest
+
+# Check how close the r2 is:
+SSE = sum((dtest$HTgoaldiff - predictTest)^2)
+SST = sum((dtest$HTgoaldiff - mean(dragon$HTgoaldiff))^2)
+1 - SSE/SST
+# original adj-R2: .1353. Against the testing set: .10097. Not bad?
+
+# using DoubleDragon3 ====
+# Only purpose is to view the effect of home or away game
+
+# first check for multicollinearity:
+DD3_numeric <- DoubleDragon3[, sapply(DoubleDragon3, is.numeric)]
+cor(DD3_numeric)
+# again, looks okay
+
+# number of observations per season
+table(DoubleDragon3$season)
+
+# create training set use all data up to season 2014/2015
+train <- DoubleDragon3[!(DoubleDragon3$season == "2015/2016"),]
+# create testing set
+test <- DoubleDragon3[(DoubleDragon3$season == "2015/2016"),]
+
+# models 1 and 2 - include home team and opponent team variables
+# we see that team vs opponent team variables are identical, except one is negative and the other positive
+# this is expected
+# model1 - all variables - R2 = .1714
+model1 <- lm(goalDiff ~ poss + shotson + shotsoff + crosses + corners +
+               oppShotson + oppShotsoff + oppCrosses + oppCorners + 
+               fouls + Ycards + Rcards + oppFouls + oppYcards + oppRcards +
+               home_or_away, data = train)
+summary(model1)
+
+# model2 - without fouls - R2 = .1712
+model2 <- lm(goalDiff ~ poss + shotson + shotsoff + crosses + corners +
+               oppShotson + oppShotsoff + oppCrosses + oppCorners + 
+               Ycards + Rcards + oppYcards + oppRcards +
+               home_or_away, data = train)
+summary(model2)
+
+# my concern with the above is that is lists outcomes for all teams. By doing this, it lists
+# each match twice.
