@@ -4,6 +4,8 @@ library(dplyr)
 library(XML) # need this for xmlToList
 library(magrittr) # need this for %<>%
 library(ggplot2)
+library(caTools)
+library(ROCR)
 
 ###########################################################################################
 ##################### DF 1: HIGHEST LEVEL SUMMARY STATS: no XML data ###################### ====
@@ -612,13 +614,28 @@ s6 <- ggplot(DDStatsSort, aes(rowID, scrosses)) +
   theme(plot.title = element_text(hjust = 0.5)) +
   labs(x = "", y = "")
 
+# (7) yellow cards
+s7 <- ggplot(DDStatsSort, aes(rowID, sYcards)) +
+  geom_point(alpha = .2) +
+  labs(title = "Yello Cards") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "", y = "")
+
+# (8) red cards
+s8 <- ggplot(DDStatsSort, aes(rowID, sRcards)) +
+  geom_point(alpha = .2) +
+  labs(title = "Red Cards") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  labs(x = "", y = "")
+
+
 source("http://peterhaschke.com/Code/multiplot.R")
-multiplot(s1, s2, s3, s4, s5, s6, cols = 3)
+multiplot(s1, s2, s3, s4, s5, s6, s7, s8, cols = 4)
 
 
 # Regression Analysis ====
 
-# check for multicollinearity:
+# check for correlation, potential multicollinearity:
 dragon_numeric <- dragon[, sapply(dragon, is.numeric)]
 cor(dragon_numeric)
 # none found. the only highly correlated variables are "goals," "points," and "goal differential."
@@ -637,28 +654,507 @@ dtest <- dragon[(dragon$season == "2015/2016"),]
 
 # dmodels 1 & 2 - dragon data set ====
 
-# model1 - regress HTgoaldiff against all variables - R2 = .1351
+# model1 - regress HTgoaldiff against all variables - R2 = .1351, SSE = 6194.164, Test AdjR = 0.1016596
 dmodel1 <- lm(HTgoaldiff ~ homePoss + HTshoton + HTshotoff + HTcross + HTcorners +
                 ATshoton + ATshotoff + ATcross + ATcorners + 
                 HTfouls + htYcard + htRcard + ATfouls + atYcard + atRcard,
               data = dtrain)
 summary(dmodel1)
 
-# model2 - without ATfouls & HTshotoff- R2 = .1353
+dtest[100,]
+
+
+# now used dtest (test data set)
+predictTest1 = predict(dmodel1, newdata = dtest)
+predictTest1
+
+# Check how close the r2 is:
+SSE1 = sum((dtest$HTgoaldiff - predictTest1)^2)
+SSE1
+sqrt(SSE1)
+
+SST1 = sum((dtest$HTgoaldiff - mean(dragon$HTgoaldiff))^2)
+1 - SSE1/SST1
+
+# mean squared errors:
+MSE1 = mean((dtest$HTgoaldiff - predictTest1)^2)
+sqrt(MSE1)
+
+# model2 - without ATfouls & HTshotoff- R2 = .1353, SSE = 6198.931, Test AdjR = 0.1009683
 dmodel2 <- lm(HTgoaldiff ~ homePoss + HTshoton + HTcross + HTcorners +
                 ATshoton + ATshotoff + ATcross + ATcorners + 
                 HTfouls + htYcard + htRcard + atYcard + atRcard,
               data = dtrain)
 summary(dmodel2)
 
-
 # now used dtest (test data set)
-predictTest = predict(dmodel2, newdata = dtest)
-predictTest
+predictTest2 = predict(dmodel2, newdata = dtest)
+predictTest2
 
 # Check how close the r2 is:
-SSE = sum((dtest$HTgoaldiff - predictTest)^2)
-SST = sum((dtest$HTgoaldiff - mean(dragon$HTgoaldiff))^2)
-1 - SSE/SST
+SSE2 = sum((dtest$HTgoaldiff - predictTest2)^2)
+SSE2
+sqrt(SSE2)
+SST2 = sum((dtest$HTgoaldiff - mean(dragon$HTgoaldiff))^2)
+1 - SSE2/SST2
+
+# mean squared errors:
+MSE2 = mean((dtest$HTgoaldiff - predictTest2)^2)
+sqrt(MSE2)
+
+
+# model3 - with interaction variable: HTcorners & HTshoton, and ATcorner & ATshoton - R2 = .1363
+# SSE = 6194.613, Test AdjR = 0.1015945
+dmodel3 <- lm(HTgoaldiff ~ homePoss + HTshoton + HTcross + HTcorners + HTshoton*HTcorners +
+                ATshoton + ATshotoff + ATcross + ATcorners + ATshoton*ATcorners +
+                HTfouls + htYcard + htRcard + atYcard + atRcard,
+              data = dtrain)
+summary(dmodel3)
+
+# now used dtest (test data set)
+predictTest3 = predict(dmodel3, newdata = dtest)
+predictTest3
+
+# Check how close the r2 is:
+SSE3 = sum((dtest$HTgoaldiff - predictTest3)^2)
+SSE3
+sqrt(SSE3)
+SST3 = sum((dtest$HTgoaldiff - mean(dragon$HTgoaldiff))^2)
+1 - SSE3/SST3
+
+# mean squared errors:
+MSE3 = mean((dtest$HTgoaldiff - predictTest3)^2)
+sqrt(MSE3)
+
+# model4 - remove HTcorner and ATcorner - R2 = .1303, SSE = 6193.573, Test AdjR = 0.1016003
+dmodel4 <- lm(HTgoaldiff ~ homePoss + HTshoton + HTcross +
+                ATshoton + ATshotoff + ATcross +
+                HTfouls + htYcard + htRcard + atYcard + atRcard,
+              data = dtrain)
+summary(dmodel4)
+
+# now used dtest (test data set)
+predictTest4 = predict(dmodel4, newdata = dtest)
+predictTest4
+
+# Check how close the r2 is:
+SSE4 = sum((dtest$HTgoaldiff - predictTest3)^2)
+SSE4
+sqrt(SSE4)
+SST4 = sum((dtest$HTgoaldiff - mean(dragon$HTgoaldiff))^2)
+1 - SSE4/SST4
+
+# mean squared errors:
+MSE4 = mean((dtest$HTgoaldiff - predictTest4)^2)
+sqrt(MSE4)
+
 # original adj-R2: .1353. Against the testing set: .10097. Not bad?
 
+# nah
+# model5 - regress HTgoaldiff against few variables - AdjR2 = .05449, SSE = 6618.55, Test AdjR = 0.04011094
+dmodel5 <- lm(HTgoaldiff ~
+                HTshoton + ATshoton + 
+                HTcard + ATcard,
+              data = dtrain)
+summary(dmodel5)
+
+# now used dtest (test data set)
+predictTest5 = predict(dmodel5, newdata = dtest)
+predictTest5
+
+# Check how close the r2 is:
+SSE5 = sum((dtest$HTgoaldiff - predictTest5)^2)
+SSE5
+sqrt(SSE5)
+
+SST5 = sum((dtest$HTgoaldiff - mean(dragon$HTgoaldiff))^2)
+1 - SSE5/SST5
+
+# mean squared errors:
+MSE5 = mean((dtest$HTgoaldiff - predictTest5)^2)
+sqrt(MSE5)
+
+
+# model6 - regress HTgoaldiff against few variables - AdjR2 = .07194, SSE = 6493.912, Test AdjR = 0.05818721
+dmodel6 <- lm(HTgoaldiff ~
+                HTshoton + ATshoton + 
+                htYcard + htRcard + atYcard + atRcard,
+              data = dtrain)
+summary(dmodel6)
+
+# now used dtest (test data set)
+predictTest6 = predict(dmodel6, newdata = dtest)
+predictTest6
+
+# Check how close the r2 is:
+SSE6 = sum((dtest$HTgoaldiff - predictTest6)^2)
+SSE6
+sqrt(SSE6)
+
+SST6 = sum((dtest$HTgoaldiff - mean(dragon$HTgoaldiff))^2)
+1 - SSE6/SST6
+
+# mean squared errors:
+MSE6 = mean((dtest$HTgoaldiff - predictTest6)^2)
+sqrt(MSE6)
+
+
+
+
+
+
+# Logistic Model Attempts
+
+# Baseline model 1: 
+# proportion of wins 6070 wins, 10178 non-wins
+table(DoubleDragon3$wins)
+# proportion of draws
+table(DoubleDragon3$draws)
+
+# proportion of wins: .3735844
+6070/(6070+10178)
+# proportion of draws: .2528311
+4108/(4108+12140)
+
+# what if we break it down by home and away games?
+
+# Baseline model 2:
+# home game wins: 0=4383, 1=3741
+DoubleDragon3 %>% 
+  filter(home_or_away == "H") %>% 
+  select(wins) %>% 
+  table()
+# proportion of home game wins: .4604874
+3741/(3741+4383)
+
+# away game wins. 0=5795, 1=2329
+DoubleDragon3 %>% 
+  filter(home_or_away == "A") %>% 
+  select(wins) %>% 
+  table()
+# proportion of away game wins: .2866814
+2329/(2329+5795)
+
+# home game draws. 0=6070, 1=2054
+DoubleDragon3 %>% 
+  filter(home_or_away == "H") %>% 
+  select(draws) %>% 
+  table()
+# proportion of home game draws: .2528311
+2054/(2054+6070)
+
+# away game draws. 0=6070, 1=2054
+DoubleDragon3 %>% 
+  filter(home_or_away == "A") %>% 
+  select(draws) %>% 
+  table()
+# proportion of away game draws: .2528311
+2054/(2054+6070)
+
+
+# Baseline Model 1 predictions:
+# if we guess win each time, we will be right 37.36% of the time
+# if we guess draw each time, we will be right 25.28% of the time
+
+# Baseline Model 2 predictions:
+# if we guess home team win each time, we will be right 46.05% of the time
+# if we guess away team win each time, we will be right 28.67% of the time
+# if we guess home or away team draw each time, we will be right 25.28% of the time
+
+
+# Our goal is to beat those models
+
+# create training set use all data up to season 2014/2015
+ddtrain <- DoubleDragon3[!(DoubleDragon3$season == "2015/2016"),]
+# create testing set
+ddtest <- DoubleDragon3[(DoubleDragon3$season == "2015/2016"),]
+
+# model1 - regress HTgoaldiff against all variables. AIC: 14810, 
+ddmodel1 <- glm(wins ~ shotson + shotsoff + crosses + corners +
+                oppShotson + oppShotsoff + oppCrosses + oppCorners + 
+                fouls + Ycards + Rcards + oppYcards + oppRcards,
+                family = binomial(link = 'logit'), data = ddtrain)
+summary(ddmodel1)
+
+ddpredict1 = predict(ddmodel1, type="response")
+summary(ddpredict1)
+tapply(ddpredict1, ddtrain$wins, mean)
+
+# model2 - regress HTgoaldiff against all variables. AIC: 13553, 
+ddmodel2 <- glm(draws ~ shotson + shotsoff + crosses + corners +
+                  oppShotson + oppShotsoff + oppCrosses + oppCorners + 
+                  fouls + Ycards + Rcards + oppYcards + oppRcards,
+                family = binomial(link = 'logit'), data = ddtrain)
+summary(ddmodel2)
+
+ddpredict2 = predict(ddmodel2, type="response")
+summary(ddpredict2)
+tapply(ddpredict2, ddtrain$wins, mean)
+
+# model3 - regress HTgoaldiff against all variables. AIC: 15448
+ddmodel3 <- glm(wins ~ crosses + oppCrosses + 
+                  fouls + Ycards + Rcards + oppYcards + oppRcards,
+                family = binomial(link = 'logit'), data = ddtrain)
+summary(ddmodel3)
+
+ddpredict3 = predict(ddmodel3, type="response")
+summary(ddpredict3)
+tapply(ddpredict3, ddtrain$wins, mean)
+
+# model4 - regress HTgoaldiff against all variables. AIC: 13548
+ddmodel4 <- glm(draws ~ crosses + oppCrosses + 
+                  fouls + Ycards + Rcards + oppYcards + oppRcards,
+                family = binomial(link = 'logit'), data = ddtrain)
+summary(ddmodel4)
+
+ddpredict4 = predict(ddmodel4, type="response")
+summary(ddpredict4)
+tapply(ddpredict4, ddtrain$wins, mean)
+
+# model5 - regress HTgoaldiff against all variables. AIC: 14683
+ddmodel5 <- glm(wins ~ shotson + shotsoff + crosses +
+                  oppShotson + oppShotsoff + oppCrosses +
+                  Ycards + Rcards + oppYcards + oppRcards + home_or_away,
+                family = binomial(link = 'logit'), data = ddtrain)
+summary(ddmodel5)
+
+ddpredict5 = predict(ddmodel5, type="response")
+summary(ddpredict5)
+tapply(ddpredict5, ddtrain$wins, mean)
+
+# model6 - regress HTgoaldiff against all variables. AIC: 13573, 
+ddmodel6 <- glm(draws ~ shotson + shotsoff + crosses +
+                  oppShotson + oppShotsoff + oppCrosses +
+                  Ycards + Rcards + oppYcards + oppRcards,
+                family = binomial(link = 'logit'), data = ddtrain)
+summary(ddmodel6)
+
+ddpredict6 = predict(ddmodel6, type="response")
+summary(ddpredict6)
+tapply(ddpredict6, ddtrain$wins, mean)
+
+# model7 - regress HTgoaldiff against all variables. AIC: 15011
+ddmodel7 <- glm(wins ~ crosses +
+                  oppCrosses +
+                  Ycards + Rcards + oppYcards + oppRcards +
+                  home_or_away,
+                family = binomial(link = 'logit'), data = ddtrain)
+summary(ddmodel7)
+
+ddpredict7 = predict(ddmodel7, type="response")
+summary(ddpredict7)
+tapply(ddpredict7, ddtrain$wins, mean)
+
+# model8 - regress HTgoaldiff against all variables. AIC: 13569
+ddmodel8 <- glm(draws ~ crosses +
+                  oppCrosses +
+                  Ycards + Rcards + oppYcards + oppRcards +
+                  home_or_away,
+                family = binomial(link = 'logit'), data = ddtrain)
+summary(ddmodel8)
+
+ddpredict8 = predict(ddmodel8, type="response")
+summary(ddpredict8)
+tapply(ddpredict8, ddtrain$wins, mean)
+
+
+###### Logistic regression using Home team win/draw #####
+###### (not doubled data) ######
+
+# create training set use all data up to season 2014/2015
+hdtrain <- dragon[!(dragon$season == "2015/2016"),]
+# create testing set
+hdtest <- dragon[(dragon$season == "2015/2016"),]
+
+# model1 - regress HTgoaldiff against all variables. AIC: 
+hdmodel1 <- glm(HTwin ~ HTshoton + HTshotoff + HTcross + HTcorners + # hdmodel1 is "Qualitylog"
+                  ATshoton + ATshotoff + ATcross + ATcorners + 
+                  HTfouls + htYcard + htRcard + ATfouls + atYcard + atRcard,
+                data = hdtrain, family = binomial)
+summary(hdmodel1)
+
+# in-sample prediction
+hdpredict1 = predict(hdmodel1, type="response")
+summary(hdpredict1)
+tapply(hdpredict1, hdtrain$HTwin, mean)
+
+# out of sample accuracy
+hdpredictTest1 = predict(hdmodel1, type = "response", newdata = hdtest)
+summary(hdpredictTest1)
+tapply(hdpredictTest1, hdtest$HTwin, mean)
+
+
+# confusion matrix
+table(hdtrain$HTwin, hdpredict1 > 0.5) # 0.5 is the threshhold we chose
+# sensitivity = 1550/(1550+1281) = 0.5475
+1550/(1550+1281)
+# specificity = 2254/(2254+972) = 0.6987
+2254/(2254+972)
+
+# these numbers will change is we increase or decrease the threshhold from 0.5
+
+# picking a good threshhold - use ROC curve
+# for high specificity - we want to maximize the true positive rate while keeping the false positive rate low.
+# if you want a high sensitivity (high true positive rate), will minimize the false positive rate.
+
+# to generate ROC curve
+ROCRpred1 = prediction(hdpredict1, hdtrain$HTwin)
+ROCRperf1 = performance(ROCRpred1, "tpr","fpr")
+
+# don't prefer a win or a loss, but rather accuracy. This would lead us towards selecting
+# 0.5,0.5 as the threshhold value. We can asses our thinking by viewing this on an ROC curve:
+plot(ROCRperf1, colorize = TRUE, print.cutoffs.at=seq(0.5,0.5), text.adj=c(-0.2,1.7)) # adds threshhold values
+
+
+
+# model2 - regress HTgoaldiff against all variables. AIC: 
+hdmodel2 <- glm(HTdraw ~ HTshoton + HTshotoff + HTcross + HTcorners +
+                  ATshoton + ATshotoff + ATcross + ATcorners + 
+                  HTfouls + htYcard + htRcard + ATfouls + atYcard + atRcard,
+                data = hdtrain, family = binomial)
+summary(hdmodel2)
+
+# in-sample prediction
+hdpredict2 = predict(hdmodel2, type="response")
+summary(hdpredict2)
+tapply(hdpredict2, hdtrain$HTdraw, mean)
+
+# out of sample accuracy
+hdpredictTest2 = predict(hdmodel2, type = "response", newdata = hdtest)
+summary(hdpredictTest2)
+tapply(hdpredictTest2, hdtest$HTdraw, mean)
+
+# model3 - regress HTgoaldiff against all variables. AIC:
+hdmodel3 <- glm(HTwin ~ HTcross + ATcross +
+                  HTfouls + ATfouls +
+                  htYcard + htRcard + atYcard + atRcard,
+                data = hdtrain, family = binomial)
+summary(hdmodel3)
+
+# in-sample prediction
+hdpredict3 = predict(hdmodel3, type="response")
+summary(hdpredict3)
+tapply(hdpredict3, hdtrain$HTwin, mean)
+
+# out of sample accuracy
+hdpredictTest3 = predict(hdmodel3, type = "response", newdata = hdtest)
+summary(hdpredictTest3)
+tapply(hdpredictTest3, hdtest$HTwin, mean)
+
+
+# model4 - regress HTgoaldiff against all variables. AIC: 
+hdmodel4 <- glm(HTdraw ~ HTcross + ATcross +
+                  HTfouls + ATfouls +
+                  htYcard + htRcard + atYcard + atRcard,
+                data = hdtrain, family = binomial)
+summary(hdmodel4)
+
+# in-sample prediction
+hdpredict4 = predict(hdmodel4, type="response")
+summary(hdpredict4)
+tapply(hdpredict4, hdtrain$HTdraw, mean)
+
+# out of sample accuracy
+hdpredictTest4 = predict(hdmodel4, type = "response", newdata = hdtest)
+summary(hdpredictTest4)
+tapply(hdpredictTest4, hdtest$HTdraw, mean)
+
+# model5 - regress HTgoaldiff against all variables. AIC: 
+hdmodel5 <- glm(HTwin ~ HTcross + ATcross +
+                  htYcard + htRcard + atYcard + atRcard,
+                data = hdtrain, family = binomial)
+summary(hdmodel5)
+
+# in-sample prediction
+hdpredict5 = predict(hdmodel5, type="response")
+summary(hdpredict5)
+tapply(hdpredict5, hdtrain$HTwin, mean)
+
+# out of sample accuracy
+hdpredictTest5 = predict(hdmodel5, type = "response", newdata = hdtest)
+summary(hdpredictTest5)
+tapply(hdpredictTest5, hdtest$HTwin, mean)
+
+# model6 - regress HTgoaldiff against all variables. AIC: 
+hdmodel6 <- glm(HTdraw ~ HTcross + ATcross +
+                  htYcard + htRcard + atYcard + atRcard,
+                data = hdtrain, family = binomial)
+summary(hdmodel6)
+
+# in-sample prediction
+hdpredict6 = predict(hdmodel6, type="response")
+summary(hdpredict6)
+tapply(hdpredict6, hdtrain$HTdraw, mean)
+
+# out of sample accuracy
+hdpredictTest6 = predict(hdmodel6, type = "response", newdata = hdtest)
+summary(hdpredictTest6)
+tapply(hdpredictTest6, hdtest$HTdraw, mean)
+
+# model7 - regress HTgoaldiff against all variables. AIC: 
+hdmodel7 <- glm(HTwin ~ htYcard + htRcard + atYcard + atRcard,
+                data = hdtrain, family = binomial)
+summary(hdmodel7)
+
+# in-sample prediction
+hdpredict7 = predict(hdmodel7, type="response")
+summary(hdpredict7)
+tapply(hdpredict7, hdtrain$HTwin, mean)
+
+# out of sample accuracy
+hdpredictTest7 = predict(hdmodel7, type = "response", newdata = hdtest)
+summary(hdpredictTest7)
+tapply(hdpredictTest7, hdtest$HTwin, mean)
+
+# model8 - regress HTgoaldiff against all variables. AIC: 
+hdmodel8 <- glm(HTdraw ~ htYcard + htRcard + atYcard + atRcard,
+                data = hdtrain, family = binomial)
+summary(hdmodel8)
+
+# in-sample prediction
+hdpredict8 = predict(hdmodel8, type="response")
+summary(hdpredict8)
+tapply(hdpredict8, hdtrain$HTdraw, mean)
+
+# out of sample accuracy
+hdpredictTest8 = predict(hdmodel8, type = "response", newdata = hdtest)
+summary(hdpredictTest8)
+tapply(hdpredictTest8, hdtest$HTdraw, mean)
+
+##### home team only #####
+
+
+names(DoubleDragon3)
+
+
+
+set.seed(88)
+split <- sample.split(DoubleDragon3$wins, SplitRatio = .75)
+split
+sdtrain <- subset(na.omit(DoubleDragon3), split == TRUE) # (qualityTrain)
+sdtest <- subset(DoubleDragon3, split == FALSE) # (qualityTest)
+str(sdtrain$wins)
+str(sdtest$wins)
+
+
+sdLog1 = glm(wins ~ poss + shotson + shotsoff + crosses + corners + # (QualityLog)
+              oppShotson + oppShotsoff + oppCrosses + oppCorners + 
+              fouls + Ycards + Rcards + oppYcards + oppRcards,
+            data = sdtrain, family = binomial)
+summary(sdLog1)
+
+sdLog2 = glm(draws ~ poss + shotson + shotsoff + crosses + corners +
+              oppShotson + oppShotsoff + oppCrosses + oppCorners + 
+              fouls + Ycards + Rcards + oppYcards + oppRcards,
+            data = sdtrain, family = binomial)
+summary(sdLog2)
+
+
+predictTrain1 = predict(sdLog1, type="response")
+summary(predictTrain1)
+tapply(predictTrain1, sdtrain$wins, mean)
+
+
+predictTrain2 = predict(sdLog2, type="response")
+summary(predictTrain2)
+tapply(predictTrain2, sdtrain$draws, mean)
