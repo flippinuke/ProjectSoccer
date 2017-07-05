@@ -1,4 +1,54 @@
-# prepare data for regs ====
+### Convert SQLite data to csv files ====
+
+# (I) Install Packages
+rm(list=ls())
+install.packages("RSQLite") # don't put this in final pWrite function(s) for previous repetitive codes
+library(RSQLite)
+library(DBI)
+
+# create data frame that reads the SQL file
+fdb = dbConnect(SQLite(), dbname="originalDB.sqlite")
+
+# use this to see tables:
+# dbListTables(fdb)
+
+### (II) change sqlite tables to csv files
+
+# (1) create variable for each table
+country.table <- dbGetQuery(fdb, 'SELECT * FROM Country')
+league.table <- dbGetQuery(fdb, 'SELECT * FROM League')
+match.table <- dbGetQuery(fdb, 'SELECT * FROM Match')
+player.table <- dbGetQuery(fdb, 'SELECT * FROM Player')
+player.attributes.table <- dbGetQuery(fdb, 'SELECT * FROM Player_Attributes')
+team.table <- dbGetQuery(fdb, 'SELECT * FROM Team')
+team.attributes.table <- dbGetQuery(fdb, 'SELECT * FROM Team_Attributes')
+sqlite.sequence.table <- dbGetQuery(fdb, 'SELECT * FROM sqlite_sequence')
+
+# (2) change that variable to csv file that exists in project folder (Desktop/Soccer)
+write.csv(country.table, file = "country.csv")
+write.csv(league.table, file = "league.csv")
+write.csv(match.table, file = "match.csv")
+write.csv(player.table, file = "player.csv")
+write.csv(player.attributes.table, file = "playerattributes.csv")
+write.csv(team.table, file = "teams.csv")
+write.csv(team.attributes.table, file = "teamattributes.csv")
+write.csv(sqlite.sequence.table, file = "sqlitesequence.csv")
+
+### (III) Create variable for each csv file
+
+# (1) variables/df's created here (from csv files created earlier)
+country <- read.csv('country.csv')
+league <- read.csv('league.csv', stringsAsFactors = FALSE)
+match <- read.csv('match.csv', stringsAsFactors = FALSE) # this might take a while to load
+player <- read.csv('player.csv')
+playerattributes <- read.csv('playerattributes.csv')
+teams <- read.csv('teams.csv')
+teamattributes <- read.csv('teamattributes.csv')
+sqlitesequence <- read.csv('sqlitesequence.csv')
+
+#end
+
+# prepare data for analysis ====
 # libraries
 library(dplyr)
 library(XML) # need this for xmlToList
@@ -50,7 +100,7 @@ statsMB3 <-
                                                              ifelse(max(stage) > 34 & max(stage) < 37, '36 matches', '38 matches'))))) # max(stage) instead of max(real_stage) (consider, since we added 'season' to group_by()
 
 
-# this shows that the dispersion is similar, regardless of how many games a league plays ====
+# this shows that the dispersion is similar, regardless of how many games a league plays
 ggplot(data = statsMB3, aes(sgdiff, spoints, col = factor(maxStage))) + geom_point() +
   labs(title = "Points vs Goal Differential") + theme(plot.title = element_text(hjust = 0.5)) +
   labs(x = "Goal Differential", y = "Points") +
