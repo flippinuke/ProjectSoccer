@@ -4,12 +4,10 @@ library(dplyr)
 library(XML) # need this for xmlToList
 library(magrittr) # need this for %<>%
 library(ggplot2)
-library(caTools)
-library(ROCR)
 
 ###########################################################################################
 ##################### DF 1: HIGHEST LEVEL SUMMARY STATS: no XML data ###################### ====
-###########################################################################################
+########################################################################################### ====
 
 # reduce match to only necessary variables [no XML, has more observations]
 matchMB <- match %>% 
@@ -58,7 +56,7 @@ ggplot(data = statsMB3, aes(sgdiff, spoints, col = factor(maxStage))) + geom_poi
   labs(x = "Goal Differential", y = "Points") +
   labs(colour = "Season Length")
 
-# the following code shows use that the variable 'stage' means 'game' or 'match' ====
+# the following code shows use that the variable 'stage' means 'game' or 'match'
 # English premier league has 38 games in a season. 19 home and 19 away games per team
 
 # match %>% # match 1
@@ -72,29 +70,30 @@ ggplot(data = statsMB3, aes(sgdiff, spoints, col = factor(maxStage))) + geom_poi
 #   arrange(away_team_api_id)
 
 ###########################################################################################
-############################# DF 2+: ALL VARIABLES & XML data ############################# ====
+############################# DF 2+: ALL VARIABLES, XML data, ############################# ====
+################################### and Calculated Fields #################################
 ###########################################################################################
 
-# Create OG data frame and XML data ====
+# Create OG data frame and XML data
 # include only desired variables
 matchALL <- match %>%
   select(country_id, league_id, season, stage, date, match_api_id,
          home_team_api_id, away_team_api_id, home_team_goal, away_team_goal,
          shoton, shotoff, foulcommit, card, cross, corner, possession)
 
-# create test df ====
+# create test df
 testALL <- matchALL
 
-# remove rows that don't have data or have incomplete data ====
+# remove rows that don't have data or have incomplete data
 testALL <- testALL[complete.cases(testALL$possession),] # removes all rows in matchAD1$possession with NA - size: 25979 rows to 14217 rows
 testALL <- testALL[!(testALL$possession == "<possession />"),] # remove rows where test$possession contains only "<possession />" - size: 14217 rows to 8419 rows
 testALL <- testALL[!(testALL$card == "<card />"),] # remove rows where test$card contains only "<possession />" - # size: from 8419 to 8125 
 testALL <- testALL[!(testALL$corner == "<corner />"),] # remove rows where test$corner contains only "<corner />" # size: from 8125 to 8124
 
-# Extract necessary data from nested XML data: ====
+# Extract necessary data from nested XML data:
 # Time consuming - takes about 12 hours to run
 
-# length of possession for home team (by percentage of game) ==== (< 13 minutes)
+# length of possession for home team (by percentage of game) (< 13 minutes)
 for (i in 1:length(testALL$possession)){
   testALL$homePoss[i] <- as.character(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$possession[i])))) %>%
                                         filter(row_number() == n()) %>% 
@@ -103,15 +102,13 @@ for (i in 1:length(testALL$possession)){
 
 # homePoss should always be a 2 digit number
 # this shows us that 614 of the variables from above were brought in incorrectly
-testALL$homePoss[which(nchar(testALL$homePoss) > 10)] # once code is fixed, this will case to show the 614 observations
-
-# dplyr version:
+# once code is fixed, this will cease to show the 614 observations:
 testALL %>% 
   select(homePoss) %>% 
   filter(nchar(homePoss) > 10) %>% 
   count
 
-# length of possession for away team, by percentage of game (need this to clean homePoss df) (< 12 minutes) ====
+# length of possession for away team, by percentage of game (need this to clean homePoss df) (< 12 minutes)
 for (i in 1:length(testALL$possession)){
   testALL$awayPoss[i] <- as.character(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$possession[i])))) %>%
                                         filter(row_number() == n()) %>% 
@@ -129,7 +126,7 @@ testALL$homePoss <- as.integer(substr(testALL$homePoss, start = 7, stop = 8))
 # create away team possession variable:
 testALL$awayPoss <- 100 - testALL$homePoss
 
-# number of shots on goal - home team against away team (~35 minutes to run) ====
+# number of shots on goal - home team against away team (~35 minutes to run)
 for (i in 1: length(testALL$shoton)){
   testALL$HTshoton[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$shoton[i])))) %>% 
                                 filter(player1 == testALL$home_team_api_id[i] |
@@ -138,7 +135,7 @@ for (i in 1: length(testALL$shoton)){
                                          n == testALL$home_team_api_id[i]))
 }
 
-# number of shots on goal - away team against home team ( < 36 minutes) ====
+# number of shots on goal - away team against home team ( < 36 minutes)
 for (i in 1: length(testALL$shoton)){
   testALL$ATshoton[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$shoton[i])))) %>% 
                                 filter(player1 == testALL$home_team_api_id[i] |
@@ -147,7 +144,7 @@ for (i in 1: length(testALL$shoton)){
                                          n == testALL$away_team_api_id[i]))
 }
 
-# number of shots off goal - home team against away team ( < 44 minutes) ====
+# number of shots off goal - home team against away team ( < 44 minutes)
 for (i in 1: length(testALL$shotoff)){
   testALL$HTshotoff[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$shotoff[i])))) %>% 
                                  filter(player1 == testALL$home_team_api_id[i] |
@@ -156,7 +153,7 @@ for (i in 1: length(testALL$shotoff)){
                                           n == testALL$home_team_api_id[i]))
 }
 
-# number of shots off goal - away team against home team ( < 24 minutes) ====
+# number of shots off goal - away team against home team ( < 24 minutes)
 for (i in 1: length(testALL$shotoff)){
   testALL$ATshotoff[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$shotoff[i])))) %>% 
                                  filter(player1 == testALL$home_team_api_id[i] |
@@ -165,7 +162,7 @@ for (i in 1: length(testALL$shotoff)){
                                           n == testALL$away_team_api_id[i]))
 }
 
-# number of fouls - home team against away team # ( < 1 hr 30 minutes) ====
+# number of fouls - home team against away team # ( < 1 hr 30 minutes)
 for (i in 1: length(testALL$foulcommit)){
   temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$foulcommit[i]))))
   if('player1' %in% colnames(temp)) {
@@ -180,7 +177,7 @@ for (i in 1: length(testALL$foulcommit)){
                             n == testALL$home_team_api_id[i])}
   testALL$HTfouls[i] <- nrow(temp)}
 
-# number of fouls - away team against home team # ( < 1 hr 30 minutes) ====
+# number of fouls - away team against home team # ( < 1 hr 30 minutes)
 for (i in 1: length(testALL$foulcommit)){
   temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$foulcommit[i]))))
   if('player1' %in% colnames(temp)) {
@@ -195,7 +192,7 @@ for (i in 1: length(testALL$foulcommit)){
                             n == testALL$away_team_api_id[i])}
   testALL$ATfouls[i] <- nrow(temp)}
 
-# number of yellow cards for the home team ( < 28 minutes) ====
+# number of yellow cards for the home team ( < 28 minutes)
 for (i in 1: length(testALL$card)){
   testALL$htYcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$card[i])))) %>% 
                                filter(sortorder == testALL$home_team_api_id[i] |
@@ -204,7 +201,7 @@ for (i in 1: length(testALL$card)){
                                       comment == "y"))
 }
 
-# number of red cards for the home team ==== ( < 30 minutes) ====
+# number of red cards for the home team ( < 30 minutes)
 for (i in 1: length(testALL$card)){
   testALL$htRcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$card[i])))) %>% 
                                filter(sortorder == testALL$home_team_api_id[i] |
@@ -213,7 +210,7 @@ for (i in 1: length(testALL$card)){
                                       comment == "r"))
 }
 
-# number of yellow cards for the away team ( < 30 minutes) ====
+# number of yellow cards for the away team ( < 30 minutes)
 for (i in 1: length(testALL$card)){
   testALL$atYcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$card[i])))) %>% 
                                filter(sortorder == testALL$away_team_api_id[i] |
@@ -222,7 +219,7 @@ for (i in 1: length(testALL$card)){
                                       comment == "y"))
 }
 
-# number of red cards for the away team ( < 33 minutes) ====
+# number of red cards for the away team ( < 33 minutes)
 for (i in 1: length(testALL$card)){
   testALL$atRcard[i] <- nrow(as.data.frame(do.call(rbind, xmlToList(as.character(testALL$card[i])))) %>% 
                                filter(sortorder == testALL$away_team_api_id[i] |
@@ -231,7 +228,7 @@ for (i in 1: length(testALL$card)){
                                       comment == "r"))
 }
 
-# number of crosses performed by home team ====
+# number of crosses performed by home team
 for (i in 1: length(testALL$cross)){
   temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$cross[i]))))
   if('player1' %in% colnames(temp)) {
@@ -246,7 +243,7 @@ for (i in 1: length(testALL$cross)){
                             n == testALL$home_team_api_id[i])}
   testALL$HTcross[i] <- nrow(temp)}
 
-# number of crosses performed by away team ==== 
+# number of crosses performed by away team
 for (i in 1: length(testALL$cross)){
   temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$cross[i]))))
   if('player1' %in% colnames(temp)) {
@@ -261,7 +258,7 @@ for (i in 1: length(testALL$cross)){
                             n == testALL$away_team_api_id[i])}
   testALL$ATcross[i] <- nrow(temp)}
 
-# number of corners performed by home team (~ 45 minutes) ====
+# number of corners performed by home team (~ 45 minutes)
 for (i in 1: length(testALL$corner)){
   temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$corner[i]))))
   if('player1' %in% colnames(temp)) {
@@ -278,7 +275,7 @@ for (i in 1: length(testALL$corner)){
 
 tail(testALL$HTcorners, n = 1000)
 
-# number of corners performed by away team (~ 45 minutes?) ====
+# number of corners performed by away team (~ 45 minutes)
 for (i in 1: length(testALL$corner)){
   temp <- as.data.frame(do.call(rbind, xmlToList(as.character(testALL$corner[i]))))
   if('player1' %in% colnames(temp)) {
@@ -293,8 +290,7 @@ for (i in 1: length(testALL$corner)){
                             n == testALL$away_team_api_id[i])}
   testALL$ATcorners[i] <- nrow(temp)}
 
-
-# calculated variables ====
+# calculated variables
 # goal differential
 testALL$HTgoaldiff <- testALL$home_team_goal - testALL$away_team_goal # for home team
 testALL$ATgoaldiff <- testALL$away_team_goal - testALL$home_team_goal # for away team
@@ -319,7 +315,6 @@ testALL %<>%
 # cards total variable
 testALL$HTcard <- testALL$htRcard + testALL$htYcard
 testALL$ATcard <- testALL$atRcard + testALL$atYcard
-rm(dragon, DragonStats1, DoubleDragon1, DoubleDragon2, DoubleDragon3)
 
 # dragon - removes the nested XML data that we no longer need ====
 dragon <- testALL %>% 
@@ -402,7 +397,7 @@ DoubleDragon3 <- dplyr::bind_rows(DoubleDragon1, DoubleDragon2) # if doesn't wor
 DoubleDragon3$HTwin <- NULL
 DoubleDragon3$HTdraw <- NULL
 
-# add calculated fields: ====
+# add calculated fields:
 DoubleDragon3 %<>%
   mutate(wins = ifelse(goals > oppgoals, 1, 0), losses = ifelse(goals < oppgoals, 1, 0),
          draws = ifelse(goals == oppgoals, 1, 0), goalDiff = goals - oppgoals,
@@ -480,7 +475,9 @@ DDStats <-
                               ifelse(max(stage) > 30 & max(stage) < 35, 34,
                                      ifelse(max(stage) > 35 & max(stage) < 37, 36, 38))))
 
-# 4 plots - English Premier League - goalDiff vs Cards (BOTH home & away games) - DDStats ====
+# 4 plots - goalDiff vs Cards (BOTH home & away games) - DDStats ====
+
+# For English Premier League:
 
 # (1) scatterplot only - goal dif vs points, English Premier League:
 ggplot(subset(DDStats, season %in% c("2015/2016") & league_id %in% ("1729"))) +
@@ -515,12 +512,9 @@ ggplot(subset(DDStats, season %in% c("2015/2016") & league_id %in% ("1729"))) +
   geom_smooth(aes(sgdiff, spoints)) +
   geom_smooth(aes(sgdiff, scards), se = FALSE, col = "dark gray")
 
-# Same plot (4) for all leagues with available data ====
-# these plots show:
-# 1. English Premier league is much more competitive (teams are closer to each other in skill than other leagues)
-# 2. As teams win more games, they get carded less (for home games)
+# For all leagues with available data
 
-# create labeller:
+# (first create labeller):
 team_names <- c(
   '1' = "Belgium",
   '1729' = "England",
@@ -535,8 +529,7 @@ team_names <- c(
   '24558' = "Switzerland"
 )
 
-# facet wrap by league (BOTH away and home games)
-# 15/16 season
+# GoalDiff vs Cards, all leagues, '15/16 season
 ggplot(subset(DDStats, season %in% c("2015/2016"))) +
   geom_point(aes(sgdiff, spoints), colour="blue", size = 2) +
   labs(title = "Goal Differential & Points, '15/16 Season") +
@@ -547,7 +540,7 @@ ggplot(subset(DDStats, season %in% c("2015/2016"))) +
   geom_smooth(aes(sgdiff, scards), se = FALSE) +
   facet_wrap(~league_id, ncol = 3, labeller = as_labeller(team_names))
 
-# 14/15 season
+# GoalDiff vs Cards, all leagues, '14/15 season
 ggplot(subset(DDStats, season %in% c("2014/2015"))) +
   geom_point(aes(sgdiff, spoints), colour="blue", size = 2) +
   labs(title = "Goal Differential & Points, '14/15 Season") +
@@ -565,6 +558,8 @@ ggplot(subset(DDStats, season %in% c("2014/2015"))) +
 # these are also scatter plots. Instead of plotting a y and x axis, we ordered
 # the data by number of points, and "plotted" the variable against its order of winningest team
 
+# create the sorted df
+DDStatsSort <- DDStats
 # remove strange outlier
 DDStatsSort <- DDStatsSort[!(DDStatsSort$team == "208931"),]
 # sort
@@ -638,31 +633,23 @@ multiplot(s1, s2, s3, s4, s5, s6, s7, s8, cols = 4)
 # check for correlation, potential multicollinearity:
 dragon_numeric <- dragon[, sapply(dragon, is.numeric)]
 cor(dragon_numeric)
-# none found. the only highly correlated variables are "goals," "points," and "goal differential."
-# this makes sense, since they are based on each other. The regression only uses goal differential.
 
-# somewhat correlated variables include "home team corner kick" and "home team shots on goal"
-# It does not approach a level of concern, but the correlation makes sense, as corner kicks
-# very frequently lead to a shot on goal.
-
-# using dragon ====
+# Linear Regression ====
+# using dragon:
 
 # create training set use all data up to season 2014/2015
 dtrain <- dragon[!(dragon$season == "2015/2016"),]
 # create testing set
 dtest <- dragon[(dragon$season == "2015/2016"),]
 
-# dmodels 1 & 2 - dragon data set ====
+# dmodels 1 & 2 - dragon data set
 
-# model1 - regress HTgoaldiff against all variables - R2 = .1351, SSE = 6194.164, Test AdjR = 0.1016596
+# dmodel1 - regress HTgoaldiff against all variables - R2 = .1351, SSE = 6194.164, Test AdjR = 0.1016596
 dmodel1 <- lm(HTgoaldiff ~ homePoss + HTshoton + HTshotoff + HTcross + HTcorners +
                 ATshoton + ATshotoff + ATcross + ATcorners + 
                 HTfouls + htYcard + htRcard + ATfouls + atYcard + atRcard,
               data = dtrain)
 summary(dmodel1)
-
-dtest[100,]
-
 
 # now used dtest (test data set)
 predictTest1 = predict(dmodel1, newdata = dtest)
@@ -680,7 +667,7 @@ SST1 = sum((dtest$HTgoaldiff - mean(dragon$HTgoaldiff))^2)
 MSE1 = mean((dtest$HTgoaldiff - predictTest1)^2)
 sqrt(MSE1)
 
-# model2 - without ATfouls & HTshotoff- R2 = .1353, SSE = 6198.931, Test AdjR = 0.1009683
+# dmodel2 - without ATfouls & HTshotoff- R2 = .1353, SSE = 6198.931, Test AdjR = 0.1009683
 dmodel2 <- lm(HTgoaldiff ~ homePoss + HTshoton + HTcross + HTcorners +
                 ATshoton + ATshotoff + ATcross + ATcorners + 
                 HTfouls + htYcard + htRcard + atYcard + atRcard,
@@ -703,7 +690,7 @@ MSE2 = mean((dtest$HTgoaldiff - predictTest2)^2)
 sqrt(MSE2)
 
 
-# model3 - with interaction variable: HTcorners & HTshoton, and ATcorner & ATshoton - R2 = .1363
+# dmodel3 - with interaction variable: HTcorners & HTshoton, and ATcorner & ATshoton - R2 = .1363
 # SSE = 6194.613, Test AdjR = 0.1015945
 dmodel3 <- lm(HTgoaldiff ~ homePoss + HTshoton + HTcross + HTcorners + HTshoton*HTcorners +
                 ATshoton + ATshotoff + ATcross + ATcorners + ATshoton*ATcorners +
@@ -726,7 +713,7 @@ SST3 = sum((dtest$HTgoaldiff - mean(dragon$HTgoaldiff))^2)
 MSE3 = mean((dtest$HTgoaldiff - predictTest3)^2)
 sqrt(MSE3)
 
-# model4 - remove HTcorner and ATcorner - R2 = .1303, SSE = 6193.573, Test AdjR = 0.1016003
+# dmodel4 - remove HTcorner and ATcorner - R2 = .1303, SSE = 6193.573, Test AdjR = 0.1016003
 dmodel4 <- lm(HTgoaldiff ~ homePoss + HTshoton + HTcross +
                 ATshoton + ATshotoff + ATcross +
                 HTfouls + htYcard + htRcard + atYcard + atRcard,
@@ -750,8 +737,7 @@ sqrt(MSE4)
 
 # original adj-R2: .1353. Against the testing set: .10097. Not bad?
 
-# nah
-# model5 - regress HTgoaldiff against few variables - AdjR2 = .05449, SSE = 6618.55, Test AdjR = 0.04011094
+# dmodel5 - regress HTgoaldiff against few variables - AdjR2 = .05449, SSE = 6618.55, Test AdjR = 0.04011094
 dmodel5 <- lm(HTgoaldiff ~
                 HTshoton + ATshoton + 
                 HTcard + ATcard,
@@ -774,8 +760,7 @@ SST5 = sum((dtest$HTgoaldiff - mean(dragon$HTgoaldiff))^2)
 MSE5 = mean((dtest$HTgoaldiff - predictTest5)^2)
 sqrt(MSE5)
 
-
-# model6 - regress HTgoaldiff against few variables - AdjR2 = .07194, SSE = 6493.912, Test AdjR = 0.05818721
+# dmodel6 - regress HTgoaldiff against few variables - AdjR2 = .07194, SSE = 6493.912, Test AdjR = 0.05818721
 dmodel6 <- lm(HTgoaldiff ~
                 HTshoton + ATshoton + 
                 htYcard + htRcard + atYcard + atRcard,
@@ -799,11 +784,9 @@ MSE6 = mean((dtest$HTgoaldiff - predictTest6)^2)
 sqrt(MSE6)
 
 
+# Logistic Regression Models ====
 
-
-
-
-# Logistic Model Attempts
+# First Create Baseline Models ====
 
 # Baseline model 1: 
 # proportion of wins 6070 wins, 10178 non-wins
@@ -816,7 +799,7 @@ table(DoubleDragon3$draws)
 # proportion of draws: .2528311
 4108/(4108+12140)
 
-# what if we break it down by home and away games?
+# what if we break it down by home and away games? (useful for hd logistic regressions)
 
 # Baseline model 2:
 # home game wins: 0=4383, 1=3741
@@ -851,25 +834,15 @@ DoubleDragon3 %>%
 # proportion of away game draws: .2528311
 2054/(2054+6070)
 
-
-# Baseline Model 1 predictions:
-# if we guess win each time, we will be right 37.36% of the time
-# if we guess draw each time, we will be right 25.28% of the time
-
-# Baseline Model 2 predictions:
-# if we guess home team win each time, we will be right 46.05% of the time
-# if we guess away team win each time, we will be right 28.67% of the time
-# if we guess home or away team draw each time, we will be right 25.28% of the time
-
-
-# Our goal is to beat those models
+# Logistic Regression - Initial Models (Using doubled data - 'dd' models): ====
+# model1 - model8. model1 & model2 are a pair, model3 and model4 are a pair, etc.
 
 # create training set use all data up to season 2014/2015
 ddtrain <- DoubleDragon3[!(DoubleDragon3$season == "2015/2016"),]
 # create testing set
 ddtest <- DoubleDragon3[(DoubleDragon3$season == "2015/2016"),]
 
-# model1 - regress HTgoaldiff against all variables. AIC: 14810, 
+# ddmodel1 - regress HTgoaldiff against all variables. AIC: 14810, 
 ddmodel1 <- glm(wins ~ shotson + shotsoff + crosses + corners +
                 oppShotson + oppShotsoff + oppCrosses + oppCorners + 
                 fouls + Ycards + Rcards + oppYcards + oppRcards,
@@ -880,7 +853,7 @@ ddpredict1 = predict(ddmodel1, type="response")
 summary(ddpredict1)
 tapply(ddpredict1, ddtrain$wins, mean)
 
-# model2 - regress HTgoaldiff against all variables. AIC: 13553, 
+# ddmodel2 - regress HTgoaldiff against all variables. AIC: 13553, 
 ddmodel2 <- glm(draws ~ shotson + shotsoff + crosses + corners +
                   oppShotson + oppShotsoff + oppCrosses + oppCorners + 
                   fouls + Ycards + Rcards + oppYcards + oppRcards,
@@ -891,7 +864,7 @@ ddpredict2 = predict(ddmodel2, type="response")
 summary(ddpredict2)
 tapply(ddpredict2, ddtrain$wins, mean)
 
-# model3 - regress HTgoaldiff against all variables. AIC: 15448
+# ddmodel3 - regress HTgoaldiff against all variables. AIC: 15448
 ddmodel3 <- glm(wins ~ crosses + oppCrosses + 
                   fouls + Ycards + Rcards + oppYcards + oppRcards,
                 family = binomial(link = 'logit'), data = ddtrain)
@@ -901,7 +874,7 @@ ddpredict3 = predict(ddmodel3, type="response")
 summary(ddpredict3)
 tapply(ddpredict3, ddtrain$wins, mean)
 
-# model4 - regress HTgoaldiff against all variables. AIC: 13548
+# ddmodel4 - regress HTgoaldiff against all variables. AIC: 13548
 ddmodel4 <- glm(draws ~ crosses + oppCrosses + 
                   fouls + Ycards + Rcards + oppYcards + oppRcards,
                 family = binomial(link = 'logit'), data = ddtrain)
@@ -911,7 +884,7 @@ ddpredict4 = predict(ddmodel4, type="response")
 summary(ddpredict4)
 tapply(ddpredict4, ddtrain$wins, mean)
 
-# model5 - regress HTgoaldiff against all variables. AIC: 14683
+# ddmodel5 - regress HTgoaldiff against all variables. AIC: 14683
 ddmodel5 <- glm(wins ~ shotson + shotsoff + crosses +
                   oppShotson + oppShotsoff + oppCrosses +
                   Ycards + Rcards + oppYcards + oppRcards + home_or_away,
@@ -922,7 +895,7 @@ ddpredict5 = predict(ddmodel5, type="response")
 summary(ddpredict5)
 tapply(ddpredict5, ddtrain$wins, mean)
 
-# model6 - regress HTgoaldiff against all variables. AIC: 13573, 
+# ddmodel6 - regress HTgoaldiff against all variables. AIC: 13573, 
 ddmodel6 <- glm(draws ~ shotson + shotsoff + crosses +
                   oppShotson + oppShotsoff + oppCrosses +
                   Ycards + Rcards + oppYcards + oppRcards,
@@ -933,7 +906,7 @@ ddpredict6 = predict(ddmodel6, type="response")
 summary(ddpredict6)
 tapply(ddpredict6, ddtrain$wins, mean)
 
-# model7 - regress HTgoaldiff against all variables. AIC: 15011
+# ddmodel7 - regress HTgoaldiff against all variables. AIC: 15011
 ddmodel7 <- glm(wins ~ crosses +
                   oppCrosses +
                   Ycards + Rcards + oppYcards + oppRcards +
@@ -945,7 +918,7 @@ ddpredict7 = predict(ddmodel7, type="response")
 summary(ddpredict7)
 tapply(ddpredict7, ddtrain$wins, mean)
 
-# model8 - regress HTgoaldiff against all variables. AIC: 13569
+# ddmodel8 - regress HTgoaldiff against all variables. AIC: 13569
 ddmodel8 <- glm(draws ~ crosses +
                   oppCrosses +
                   Ycards + Rcards + oppYcards + oppRcards +
@@ -958,15 +931,15 @@ summary(ddpredict8)
 tapply(ddpredict8, ddtrain$wins, mean)
 
 
-###### Logistic regression using Home team win/draw #####
-###### (not doubled data) ######
+# Logistic Regression - Secondary Models (NOT using doubled data - 'hd' models): ====
+# model1 - model8. model1 & model2 are a pair, model3 and model4 are a pair, etc.
 
 # create training set use all data up to season 2014/2015
 hdtrain <- dragon[!(dragon$season == "2015/2016"),]
 # create testing set
 hdtest <- dragon[(dragon$season == "2015/2016"),]
 
-# model1 - regress HTgoaldiff against all variables. AIC: 
+# hdmodel1 - regress HTgoaldiff against all variables. AIC: 
 hdmodel1 <- glm(HTwin ~ HTshoton + HTshotoff + HTcross + HTcorners + # hdmodel1 is "Qualitylog"
                   ATshoton + ATshotoff + ATcross + ATcorners + 
                   HTfouls + htYcard + htRcard + ATfouls + atYcard + atRcard,
@@ -983,31 +956,7 @@ hdpredictTest1 = predict(hdmodel1, type = "response", newdata = hdtest)
 summary(hdpredictTest1)
 tapply(hdpredictTest1, hdtest$HTwin, mean)
 
-
-# confusion matrix
-table(hdtrain$HTwin, hdpredict1 > 0.5) # 0.5 is the threshhold we chose
-# sensitivity = 1550/(1550+1281) = 0.5475
-1550/(1550+1281)
-# specificity = 2254/(2254+972) = 0.6987
-2254/(2254+972)
-
-# these numbers will change is we increase or decrease the threshhold from 0.5
-
-# picking a good threshhold - use ROC curve
-# for high specificity - we want to maximize the true positive rate while keeping the false positive rate low.
-# if you want a high sensitivity (high true positive rate), will minimize the false positive rate.
-
-# to generate ROC curve
-ROCRpred1 = prediction(hdpredict1, hdtrain$HTwin)
-ROCRperf1 = performance(ROCRpred1, "tpr","fpr")
-
-# don't prefer a win or a loss, but rather accuracy. This would lead us towards selecting
-# 0.5,0.5 as the threshhold value. We can asses our thinking by viewing this on an ROC curve:
-plot(ROCRperf1, colorize = TRUE, print.cutoffs.at=seq(0.5,0.5), text.adj=c(-0.2,1.7)) # adds threshhold values
-
-
-
-# model2 - regress HTgoaldiff against all variables. AIC: 
+# hdmodel2 - regress HTgoaldiff against all variables. AIC: 
 hdmodel2 <- glm(HTdraw ~ HTshoton + HTshotoff + HTcross + HTcorners +
                   ATshoton + ATshotoff + ATcross + ATcorners + 
                   HTfouls + htYcard + htRcard + ATfouls + atYcard + atRcard,
@@ -1024,7 +973,7 @@ hdpredictTest2 = predict(hdmodel2, type = "response", newdata = hdtest)
 summary(hdpredictTest2)
 tapply(hdpredictTest2, hdtest$HTdraw, mean)
 
-# model3 - regress HTgoaldiff against all variables. AIC:
+# hdmodel3 - regress HTgoaldiff against all variables. AIC:
 hdmodel3 <- glm(HTwin ~ HTcross + ATcross +
                   HTfouls + ATfouls +
                   htYcard + htRcard + atYcard + atRcard,
@@ -1042,7 +991,7 @@ summary(hdpredictTest3)
 tapply(hdpredictTest3, hdtest$HTwin, mean)
 
 
-# model4 - regress HTgoaldiff against all variables. AIC: 
+# hdmodel4 - regress HTgoaldiff against all variables. AIC: 
 hdmodel4 <- glm(HTdraw ~ HTcross + ATcross +
                   HTfouls + ATfouls +
                   htYcard + htRcard + atYcard + atRcard,
@@ -1059,7 +1008,7 @@ hdpredictTest4 = predict(hdmodel4, type = "response", newdata = hdtest)
 summary(hdpredictTest4)
 tapply(hdpredictTest4, hdtest$HTdraw, mean)
 
-# model5 - regress HTgoaldiff against all variables. AIC: 
+# hdmodel5 - regress HTgoaldiff against all variables. AIC: 
 hdmodel5 <- glm(HTwin ~ HTcross + ATcross +
                   htYcard + htRcard + atYcard + atRcard,
                 data = hdtrain, family = binomial)
@@ -1075,7 +1024,7 @@ hdpredictTest5 = predict(hdmodel5, type = "response", newdata = hdtest)
 summary(hdpredictTest5)
 tapply(hdpredictTest5, hdtest$HTwin, mean)
 
-# model6 - regress HTgoaldiff against all variables. AIC: 
+# hdmodel6 - regress HTgoaldiff against all variables. AIC: 
 hdmodel6 <- glm(HTdraw ~ HTcross + ATcross +
                   htYcard + htRcard + atYcard + atRcard,
                 data = hdtrain, family = binomial)
@@ -1091,7 +1040,7 @@ hdpredictTest6 = predict(hdmodel6, type = "response", newdata = hdtest)
 summary(hdpredictTest6)
 tapply(hdpredictTest6, hdtest$HTdraw, mean)
 
-# model7 - regress HTgoaldiff against all variables. AIC: 
+# hdmodel7 - regress HTgoaldiff against all variables. AIC: 
 hdmodel7 <- glm(HTwin ~ htYcard + htRcard + atYcard + atRcard,
                 data = hdtrain, family = binomial)
 summary(hdmodel7)
@@ -1106,7 +1055,7 @@ hdpredictTest7 = predict(hdmodel7, type = "response", newdata = hdtest)
 summary(hdpredictTest7)
 tapply(hdpredictTest7, hdtest$HTwin, mean)
 
-# model8 - regress HTgoaldiff against all variables. AIC: 
+# hdmodel8 - regress HTgoaldiff against all variables. AIC: 
 hdmodel8 <- glm(HTdraw ~ htYcard + htRcard + atYcard + atRcard,
                 data = hdtrain, family = binomial)
 summary(hdmodel8)
@@ -1120,41 +1069,3 @@ tapply(hdpredict8, hdtrain$HTdraw, mean)
 hdpredictTest8 = predict(hdmodel8, type = "response", newdata = hdtest)
 summary(hdpredictTest8)
 tapply(hdpredictTest8, hdtest$HTdraw, mean)
-
-##### home team only #####
-
-
-names(DoubleDragon3)
-
-
-
-set.seed(88)
-split <- sample.split(DoubleDragon3$wins, SplitRatio = .75)
-split
-sdtrain <- subset(na.omit(DoubleDragon3), split == TRUE) # (qualityTrain)
-sdtest <- subset(DoubleDragon3, split == FALSE) # (qualityTest)
-str(sdtrain$wins)
-str(sdtest$wins)
-
-
-sdLog1 = glm(wins ~ poss + shotson + shotsoff + crosses + corners + # (QualityLog)
-              oppShotson + oppShotsoff + oppCrosses + oppCorners + 
-              fouls + Ycards + Rcards + oppYcards + oppRcards,
-            data = sdtrain, family = binomial)
-summary(sdLog1)
-
-sdLog2 = glm(draws ~ poss + shotson + shotsoff + crosses + corners +
-              oppShotson + oppShotsoff + oppCrosses + oppCorners + 
-              fouls + Ycards + Rcards + oppYcards + oppRcards,
-            data = sdtrain, family = binomial)
-summary(sdLog2)
-
-
-predictTrain1 = predict(sdLog1, type="response")
-summary(predictTrain1)
-tapply(predictTrain1, sdtrain$wins, mean)
-
-
-predictTrain2 = predict(sdLog2, type="response")
-summary(predictTrain2)
-tapply(predictTrain2, sdtrain$draws, mean)
