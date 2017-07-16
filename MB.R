@@ -54,6 +54,7 @@ library(dplyr)
 library(XML) # need this for xmlToList
 library(magrittr) # need this for %<>%
 library(ggplot2)
+library(ROCR)
 
 ###########################################################################################
 ##################### DF 1: HIGHEST LEVEL SUMMARY STATS: no XML data ###################### ====
@@ -139,6 +140,11 @@ testALL <- testALL[complete.cases(testALL$possession),] # removes all rows in ma
 testALL <- testALL[!(testALL$possession == "<possession />"),] # remove rows where test$possession contains only "<possession />" - size: 14217 rows to 8419 rows
 testALL <- testALL[!(testALL$card == "<card />"),] # remove rows where test$card contains only "<possession />" - # size: from 8419 to 8125 
 testALL <- testALL[!(testALL$corner == "<corner />"),] # remove rows where test$corner contains only "<corner />" # size: from 8125 to 8124
+
+
+######
+
+
 
 # Extract necessary data from nested XML data:
 # Time consuming - takes about 12 hours to run
@@ -677,7 +683,6 @@ s8 <- ggplot(DDStatsSort, aes(rowID, sRcards)) +
 source("http://peterhaschke.com/Code/multiplot.R")
 multiplot(s1, s2, s3, s4, s5, s6, s7, s8, cols = 4)
 
-
 # Regression Analysis ====
 
 # check for correlation, potential multicollinearity:
@@ -857,6 +862,7 @@ DoubleDragon3 %>%
   filter(home_or_away == "H") %>% 
   select(wins) %>% 
   table()
+
 # proportion of home game wins: .4604874
 3741/(3741+4383)
 
@@ -899,9 +905,28 @@ ddmodel1 <- glm(wins ~ shotson + shotsoff + crosses + corners +
                 family = binomial(link = 'logit'), data = ddtrain)
 summary(ddmodel1)
 
+# in sample accuracy
 ddpredict1 = predict(ddmodel1, type="response")
 summary(ddpredict1)
 tapply(ddpredict1, ddtrain$wins, mean)
+
+# confusion matrix, train
+table(ddtrain$wins, ddpredict1 > 0.5) # 0.5 is the threshhold we chose
+# TP
+1327/(905+1327)
+
+# overall accuracy = .6599802
+(6668+1327)/(6668+905+3214+1327)
+
+# out of sample accuracy
+ddpredictTest1 = predict(ddmodel1, type = "response", newdata = ddtest)
+summary(ddpredictTest1)
+tapply(ddpredictTest1, ddtest$draws, mean)
+
+# confusion matrix, test
+table(ddtest$wins, ddpredictTest1 > 0.5)
+# overall accuracy = .6584422
+(2287+435)/(2287+318+1094+435)
 
 # ddmodel2 - regress HTgoaldiff against all variables. AIC: 13553, 
 ddmodel2 <- glm(draws ~ shotson + shotsoff + crosses + corners +
@@ -910,9 +935,26 @@ ddmodel2 <- glm(draws ~ shotson + shotsoff + crosses + corners +
                 family = binomial(link = 'logit'), data = ddtrain)
 summary(ddmodel2)
 
+# in sample accuracy
 ddpredict2 = predict(ddmodel2, type="response")
 summary(ddpredict2)
-tapply(ddpredict2, ddtrain$wins, mean)
+tapply(ddpredict2, ddtrain$draws, mean)
+
+# confusion matrix, train
+table(ddtrain$draws, ddpredict2 > 0.5) # 0.5 is the threshhold we chose
+# overall accuracy = .7497111
+(9082+0)/(9082+0+3032+0)
+
+# out of sample accuracy
+ddpredictTest2 = predict(ddmodel2, type = "response", newdata = ddtest)
+summary(ddpredictTest2)
+tapply(ddpredictTest2, ddtest$draws, mean)
+
+# confusion matrix, test
+table(ddtest$draws, ddpredictTest2 > 0.5)
+# overall accuracy = .7397194
+(3058+0)/(3058+0+1076+0)
+
 
 # ddmodel3 - regress HTgoaldiff against all variables. AIC: 15448
 ddmodel3 <- glm(wins ~ crosses + oppCrosses + 
@@ -920,9 +962,26 @@ ddmodel3 <- glm(wins ~ crosses + oppCrosses +
                 family = binomial(link = 'logit'), data = ddtrain)
 summary(ddmodel3)
 
+# in sample accuracy
 ddpredict3 = predict(ddmodel3, type="response")
 summary(ddpredict3)
 tapply(ddpredict3, ddtrain$wins, mean)
+
+# confusion matrix, train
+table(ddtrain$wins, ddpredict3 > 0.5) # 0.5 is the threshhold we chose
+# overall accuracy = .6389302
+(7058+682)/(7058+515+3859+682)
+
+# out of sample accuracy
+ddpredictTest3 = predict(ddmodel3, type = "response", newdata = ddtest)
+summary(ddpredictTest3)
+tapply(ddpredictTest3, ddtest$wins, mean)
+
+# confusion matrix, test
+table(ddtest$wins, ddpredictTest3 > 0.5)
+# overall accuracy = .6470731
+(2454+221)/(2454+151+1308+221)
+
 
 # ddmodel4 - regress HTgoaldiff against all variables. AIC: 13548
 ddmodel4 <- glm(draws ~ crosses + oppCrosses + 
@@ -930,9 +989,25 @@ ddmodel4 <- glm(draws ~ crosses + oppCrosses +
                 family = binomial(link = 'logit'), data = ddtrain)
 summary(ddmodel4)
 
+# in sample accuracy
 ddpredict4 = predict(ddmodel4, type="response")
 summary(ddpredict4)
-tapply(ddpredict4, ddtrain$wins, mean)
+tapply(ddpredict4, ddtrain$draws, mean)
+
+# confusion matrix, train
+table(ddtrain$draws, ddpredict4 > 0.5) # 0.5 is the threshhold we chose
+# overall accuracy = .7497111
+(9082+0)/(9082+0+3032+0)
+
+# out of sample accuracy
+ddpredictTest4 = predict(ddmodel4, type = "response", newdata = ddtest)
+summary(ddpredictTest4)
+tapply(ddpredictTest4, ddtest$draws, mean)
+
+# confusion matrix, test
+table(ddtest$draws, ddpredictTest4 > 0.5)
+# overall accuracy = .7397194
+(3058+0)/(3058+0+1076+0)
 
 # ddmodel5 - regress HTgoaldiff against all variables. AIC: 14683
 ddmodel5 <- glm(wins ~ shotson + shotsoff + crosses +
@@ -945,6 +1020,33 @@ ddpredict5 = predict(ddmodel5, type="response")
 summary(ddpredict5)
 tapply(ddpredict5, ddtrain$wins, mean)
 
+# confusion matrix, train
+table(ddtrain$wins, ddpredict5 > 0.5) # 0.5 is the threshhold we chose
+# sensitivity = .36137
+1641/(1641+2900)
+# specificity = .14644
+1109/(1109+6464)
+# overall accuracy = .6690606
+(6464+1641)/(6464+1109+2900+1641)
+# misclassification rate = .3309394
+(1109+2900)/(6464+1109+2900+1641)
+
+# out of sample accuracy
+ddpredictTest5 = predict(ddmodel5, type = "response", newdata = ddtest)
+summary(ddpredictTest5)
+tapply(ddpredictTest5, ddtest$wins, mean)
+
+# confusion matrix, test
+table(ddtest$wins, ddpredictTest5 > 0.5)
+# sensitivity = .3551341
+543/(543+986)
+# specificity = .8522073
+2220/(2220+385)
+# overall accuracy = .6683599
+(2220+543)/(2220+385+986+543)
+# misclassification rate = .3316401
+(986+385)/(2220+385+986+543)
+
 # ddmodel6 - regress HTgoaldiff against all variables. AIC: 13573, 
 ddmodel6 <- glm(draws ~ shotson + shotsoff + crosses +
                   oppShotson + oppShotsoff + oppCrosses +
@@ -952,9 +1054,29 @@ ddmodel6 <- glm(draws ~ shotson + shotsoff + crosses +
                 family = binomial(link = 'logit'), data = ddtrain)
 summary(ddmodel6)
 
+# in sample accuracy
 ddpredict6 = predict(ddmodel6, type="response")
 summary(ddpredict6)
-tapply(ddpredict6, ddtrain$wins, mean)
+tapply(ddpredict6, ddtrain$draws, mean)
+
+# confusion matrix, train
+table(ddtrain$draws, ddpredict6 > 0.5) # 0.5 is the threshhold we chose
+# overall accuracy = .7497111
+(9082+0)/(9082+0+3032+0)
+# misclassification rate = .2502889
+3032/(3032+9082)
+
+# out of sample accuracy
+ddpredictTest6 = predict(ddmodel6, type = "response", newdata = ddtest)
+summary(ddpredictTest6)
+tapply(ddpredictTest6, ddtest$draws, mean)
+
+# confusion matrix, test
+table(ddtest$draws, ddpredictTest6 > 0.5)
+# overall accuracy = .7397194
+(3058+0)/(3058+0+1076+0)
+# misclassification rate = 
+1076/(1076+3058)
 
 # ddmodel7 - regress HTgoaldiff against all variables. AIC: 15011
 ddmodel7 <- glm(wins ~ crosses +
@@ -964,9 +1086,25 @@ ddmodel7 <- glm(wins ~ crosses +
                 family = binomial(link = 'logit'), data = ddtrain)
 summary(ddmodel7)
 
+# in sample accuracy
 ddpredict7 = predict(ddmodel7, type="response")
 summary(ddpredict7)
 tapply(ddpredict7, ddtrain$wins, mean)
+
+# confusion matrix, train
+table(ddtrain$wins, ddpredict7 > 0.5) # 0.5 is the threshhold we chose
+# overall accuracy = .6559353
+(6547+1399)/(6547+1026+3142+1399)
+
+# out of sample accuracy
+ddpredictTest7 = predict(ddmodel7, type = "response", newdata = ddtest)
+summary(ddpredictTest7)
+tapply(ddpredictTest7, ddtest$wins, mean)
+
+# confusion matrix, test
+table(ddtest$wins, ddpredictTest7 > 0.5)
+# overall accuracy = .6390905
+(2251+466)/(2251+354+1063+466)
 
 # ddmodel8 - regress HTgoaldiff against all variables. AIC: 13569
 ddmodel8 <- glm(draws ~ crosses +
@@ -976,10 +1114,25 @@ ddmodel8 <- glm(draws ~ crosses +
                 family = binomial(link = 'logit'), data = ddtrain)
 summary(ddmodel8)
 
+# in sample accuracy
 ddpredict8 = predict(ddmodel8, type="response")
 summary(ddpredict8)
-tapply(ddpredict8, ddtrain$wins, mean)
+tapply(ddpredict8, ddtrain$draws, mean)
 
+# confusion matrix, train
+table(ddtrain$draws, ddpredict8 > 0.5) # 0.5 is the threshhold we chose
+# overall accuracy = .7497111
+(9082+0)/(9082+0+3032+0)
+
+# out of sample accuracy
+ddpredictTest8 = predict(ddmodel8, type = "response", newdata = ddtest)
+summary(ddpredictTest8)
+tapply(ddpredictTest8, ddtest$draws, mean)
+
+# confusion matrix, test
+table(ddtest$draws, ddpredictTest8 > 0.5)
+# overall accuracy = .7397194
+(3058+0)/(3058+0+1076+0)
 
 # Logistic Regression - Secondary Models (NOT using doubled data - 'hd' models): ====
 # model1 - model8. model1 & model2 are a pair, model3 and model4 are a pair, etc.
@@ -1001,10 +1154,26 @@ hdpredict1 = predict(hdmodel1, type="response")
 summary(hdpredict1)
 tapply(hdpredict1, hdtrain$HTwin, mean)
 
+# confusion matrix, train
+table(hdtrain$HTwin, hdpredict1 > 0.5) # 0.5 is the threshhold we chose
+
+# sensitivity = 1550/(1550+1281) = 0.5475
+1550/(1550+1281)
+# specificity = 2254/(2254+972) = 0.6987
+2254/(2254+972)
+# overall accuracy = .6280337
+(1550+2254)/(2254+972+1281+1550)
+
 # out of sample accuracy
 hdpredictTest1 = predict(hdmodel1, type = "response", newdata = hdtest)
 summary(hdpredictTest1)
 tapply(hdpredictTest1, hdtest$HTwin, mean)
+
+# confusion matrix, test
+table(hdtest$HTwin, hdpredictTest1 > 0.5)
+
+# overall accuracy, .630866
+(807+497)/(807+350+413+497)
 
 # hdmodel2 - regress HTgoaldiff against all variables. AIC: 
 hdmodel2 <- glm(HTdraw ~ HTshoton + HTshotoff + HTcross + HTcorners +
@@ -1018,10 +1187,21 @@ hdpredict2 = predict(hdmodel2, type="response")
 summary(hdpredict2)
 tapply(hdpredict2, hdtrain$HTdraw, mean)
 
+# confusion matrix, train
+table(hdtrain$HTdraw, hdpredict2 > 0.5) # 0.5 is the threshhold we chose
+# overall accuracy = .749546
+(4540+0)/(4540+1+1516+0)
+
 # out of sample accuracy
 hdpredictTest2 = predict(hdmodel2, type = "response", newdata = hdtest)
 summary(hdpredictTest2)
 tapply(hdpredictTest2, hdtest$HTdraw, mean)
+
+# confusion matrix, test
+table(hdtest$HTdraw, hdpredictTest2 > 0.5)
+
+# overall accuracy, .7397194
+(1529+0)/(1529+0+538+0)
 
 # hdmodel3 - regress HTgoaldiff against all variables. AIC:
 hdmodel3 <- glm(HTwin ~ HTcross + ATcross +
@@ -1035,11 +1215,21 @@ hdpredict3 = predict(hdmodel3, type="response")
 summary(hdpredict3)
 tapply(hdpredict3, hdtrain$HTwin, mean)
 
+# confusion matrix, train
+table(hdtrain$HTwin, hdpredict3 > 0.5) # 0.5 is the threshhold we chose
+# overall accuracy = .5993066
+(2230+1400)/(2230+996+1431+1400)
+
 # out of sample accuracy
 hdpredictTest3 = predict(hdmodel3, type = "response", newdata = hdtest)
 summary(hdpredictTest3)
 tapply(hdpredictTest3, hdtest$HTwin, mean)
 
+# confusion matrix, test
+table(hdtest$HTwin, hdpredictTest3 > 0.5)
+
+# overall accuracy, .6221577
+(833+453)/(833+324+457+453)
 
 # hdmodel4 - regress HTgoaldiff against all variables. AIC: 
 hdmodel4 <- glm(HTdraw ~ HTcross + ATcross +
@@ -1053,10 +1243,22 @@ hdpredict4 = predict(hdmodel4, type="response")
 summary(hdpredict4)
 tapply(hdpredict4, hdtrain$HTdraw, mean)
 
+# confusion matrix, train
+table(hdtrain$HTdraw, hdpredict4 > 0.5) # 0.5 is the threshhold we chose
+# overall accuracy = .7497111
+(4541+0)/(4541+0+1516+0)
+
 # out of sample accuracy
 hdpredictTest4 = predict(hdmodel4, type = "response", newdata = hdtest)
 summary(hdpredictTest4)
 tapply(hdpredictTest4, hdtest$HTdraw, mean)
+
+# confusion matrix, test
+table(hdtest$HTdraw, hdpredictTest4 > 0.5)
+
+# overall accuracy, .7397194
+(1529+0)/(1529+0+538+0)
+
 
 # hdmodel5 - regress HTgoaldiff against all variables. AIC: 
 hdmodel5 <- glm(HTwin ~ HTcross + ATcross +
@@ -1069,10 +1271,22 @@ hdpredict5 = predict(hdmodel5, type="response")
 summary(hdpredict5)
 tapply(hdpredict5, hdtrain$HTwin, mean)
 
+# confusion matrix, train
+table(hdtrain$HTwin, hdpredict5 > 0.5) # 0.5 is the threshhold we chose
+# overall accuracy = .5946838
+(2213+1389)/(2213+1013+1442+1389)
+
 # out of sample accuracy
 hdpredictTest5 = predict(hdmodel5, type = "response", newdata = hdtest)
 summary(hdpredictTest5)
 tapply(hdpredictTest5, hdtest$HTwin, mean)
+
+# confusion matrix, test
+table(hdtest$HTwin, hdpredictTest5 > 0.5)
+
+# overall accuracy, .6269956
+(817+479)/(817+340+431+479)
+
 
 # hdmodel6 - regress HTgoaldiff against all variables. AIC: 
 hdmodel6 <- glm(HTdraw ~ HTcross + ATcross +
@@ -1085,10 +1299,22 @@ hdpredict6 = predict(hdmodel6, type="response")
 summary(hdpredict6)
 tapply(hdpredict6, hdtrain$HTdraw, mean)
 
+# confusion matrix, train
+table(hdtrain$HTdraw, hdpredict6 > 0.5) # 0.5 is the threshhold we chose
+# overall accuracy = .7497111
+(4541+0)/(4541+0+1516+0)
+
 # out of sample accuracy
 hdpredictTest6 = predict(hdmodel6, type = "response", newdata = hdtest)
 summary(hdpredictTest6)
 tapply(hdpredictTest6, hdtest$HTdraw, mean)
+
+# confusion matrix, test
+table(hdtest$HTdraw, hdpredictTest6 > 0.5)
+
+# overall accuracy, .7397194
+(1529+0)/(1529+0+538+0)
+
 
 # hdmodel7 - regress HTgoaldiff against all variables. AIC: 
 hdmodel7 <- glm(HTwin ~ htYcard + htRcard + atYcard + atRcard,
@@ -1100,10 +1326,22 @@ hdpredict7 = predict(hdmodel7, type="response")
 summary(hdpredict7)
 tapply(hdpredict7, hdtrain$HTwin, mean)
 
+# confusion matrix, train
+table(hdtrain$HTwin, hdpredict7 > 0.5) # 0.5 is the threshhold we chose
+# overall accuracy = .5768532
+(2259+1235)/(2259+967+1596+1235)
+
 # out of sample accuracy
 hdpredictTest7 = predict(hdmodel7, type = "response", newdata = hdtest)
 summary(hdpredictTest7)
 tapply(hdpredictTest7, hdtest$HTwin, mean)
+
+# confusion matrix, test
+table(hdtest$HTwin, hdpredictTest7 > 0.5)
+
+# overall accuracy, .5955491
+(865+366)/(865+292+544+366)
+
 
 # hdmodel8 - regress HTgoaldiff against all variables. AIC: 
 hdmodel8 <- glm(HTdraw ~ htYcard + htRcard + atYcard + atRcard,
@@ -1115,7 +1353,18 @@ hdpredict8 = predict(hdmodel8, type="response")
 summary(hdpredict8)
 tapply(hdpredict8, hdtrain$HTdraw, mean)
 
+# confusion matrix, train
+table(hdtrain$HTdraw, hdpredict8 > 0.5) # 0.5 is the threshhold we chose
+# overall accuracy = .7497111
+(4541+0)/(4541+0+1516+0)
+
 # out of sample accuracy
 hdpredictTest8 = predict(hdmodel8, type = "response", newdata = hdtest)
 summary(hdpredictTest8)
 tapply(hdpredictTest8, hdtest$HTdraw, mean)
+
+# confusion matrix, test
+table(hdtest$HTdraw, hdpredictTest8 > 0.5)
+
+# overall accuracy, .7397194
+(1529+0)/(1529+0+538+0)
